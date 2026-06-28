@@ -16,6 +16,7 @@ const int LEFT_IN2 = 9;
 const int FORK_IN1 = 10;
 const int FORK_IN2 = 11;
 
+// Auto-stop timeout when no command is received from the button
 const unsigned long COMMAND_TIMEOUT = 400; // ms
 
 unsigned long lastWheelCommandTime = 0;
@@ -124,12 +125,14 @@ void loop() {
     }
   }
 
+  // Stop the wheels if no wheel command is received for a certain time
   if (wheelMoving && millis() - lastWheelCommandTime > COMMAND_TIMEOUT) {
     stopWheels();
     wheelMoving = false;
     Serial.println("Wheels auto stop");
   }
 
+  // Stop the forklift if no forklift command is received for a certain time
   if (forkMoving && millis() - lastForkCommandTime > COMMAND_TIMEOUT) {
     stopFork();
     forkMoving = false;
@@ -156,7 +159,7 @@ void moveBackward() {
 }
 
 void turnLeft() {
-  // 오른쪽 바퀴 앞으로, 왼쪽 바퀴 뒤로
+  // Right wheel moves forward, left wheel moves backward
   digitalWrite(RIGHT_IN1, HIGH);
   digitalWrite(RIGHT_IN2, LOW);
 
@@ -165,7 +168,7 @@ void turnLeft() {
 }
 
 void turnRight() {
-  // 오른쪽 바퀴 뒤로, 왼쪽 바퀴 앞으로
+  // Right wheel moves backward, left wheel moves forward
   digitalWrite(RIGHT_IN1, LOW);
   digitalWrite(RIGHT_IN2, HIGH);
 
