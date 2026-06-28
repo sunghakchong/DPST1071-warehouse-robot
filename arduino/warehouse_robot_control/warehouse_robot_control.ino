@@ -1,0 +1,212 @@
+#include <SoftwareSerial.h>
+
+SoftwareSerial hm10(2, 3);
+// Arduino D2 = RX ← HM-10 TXD
+// Arduino D3 = TX → HM-10 RXD
+
+// Right wheel motor
+const int RIGHT_IN1 = 6;
+const int RIGHT_IN2 = 7;
+
+// Left wheel motor
+const int LEFT_IN1 = 8;
+const int LEFT_IN2 = 9;
+
+// Forklift motor
+const int FORK_IN1 = 10;
+const int FORK_IN2 = 11;
+
+// 버튼에서 명령이 안 들어오면 자동 정지하는 시간
+const unsigned long COMMAND_TIMEOUT = 400; // ms
+
+unsigned long lastWheelCommandTime = 0;
+unsigned long lastForkCommandTime = 0;
+
+bool wheelMoving = false;
+bool forkMoving = false;
+
+void setup() {
+  Serial.begin(9600);
+  hm10.begin(9600);
+
+  pinMode(RIGHT_IN1, OUTPUT);
+  pinMode(RIGHT_IN2, OUTPUT);
+
+  pinMode(LEFT_IN1, OUTPUT);
+  pinMode(LEFT_IN2, OUTPUT);
+
+  pinMode(FORK_IN1, OUTPUT);
+  pinMode(FORK_IN2, OUTPUT);
+
+  stopAll();
+
+  Serial.println("BLE robot control ready.");
+  Serial.println("A = forward while pressed");
+  Serial.println("C = backward while pressed");
+  Serial.println("D = left while pressed");
+  Serial.println("B = right while pressed");
+  Serial.println("E = fork up while pressed");
+  Serial.println("F = fork down while pressed");
+  Serial.println("H = stop all");
+}
+
+void loop() {
+  if (hm10.available()) {
+    char data = hm10.read();
+
+    Serial.print("Received: ");
+    Serial.println(data);
+
+    // -------------------- Wheels --------------------
+
+    if (data == 'A' || data == 'a') {
+      moveForward();
+      wheelMoving = true;
+      lastWheelCommandTime = millis();
+
+      hm10.println("Forward");
+      Serial.println("Forward");
+    }
+
+    else if (data == 'C' || data == 'c') {
+      moveBackward();
+      wheelMoving = true;
+      lastWheelCommandTime = millis();
+
+      hm10.println("Backward");
+      Serial.println("Backward");
+    }
+
+    else if (data == 'D' || data == 'd') {
+      turnLeft();
+      wheelMoving = true;
+      lastWheelCommandTime = millis();
+
+      hm10.println("Left");
+      Serial.println("Left");
+    }
+
+    else if (data == 'B' || data == 'b') {
+      turnRight();
+      wheelMoving = true;
+      lastWheelCommandTime = millis();
+
+      hm10.println("Right");
+      Serial.println("Right");
+    }
+
+    // -------------------- Forklift --------------------
+
+    else if (data == 'E' || data == 'e') {
+      forkUp();
+      forkMoving = true;
+      lastForkCommandTime = millis();
+
+      hm10.println("Fork up");
+      Serial.println("Fork up");
+    }
+
+    else if (data == 'F' || data == 'f') {
+      forkDown();
+      forkMoving = true;
+      lastForkCommandTime = millis();
+
+      hm10.println("Fork down");
+      Serial.println("Fork down");
+    }
+
+    // -------------------- Emergency / full stop --------------------
+
+    else if (data == 'H' || data == 'h') {
+      stopAll();
+
+      hm10.println("Stop all");
+      Serial.println("Stop all");
+    }
+  }
+
+  // 일정 시간 동안 바퀴 명령이 다시 안 들어오면 바퀴 정지
+  if (wheelMoving && millis() - lastWheelCommandTime > COMMAND_TIMEOUT) {
+    stopWheels();
+    wheelMoving = false;
+    Serial.println("Wheels auto stop");
+  }
+
+  // 일정 시간 동안 포크 명령이 다시 안 들어오면 포크 정지
+  if (forkMoving && millis() - lastForkCommandTime > COMMAND_TIMEOUT) {
+    stopFork();
+    forkMoving = false;
+    Serial.println("Fork auto stop");
+  }
+}
+
+// -------------------- Wheel control --------------------
+
+void moveForward() {
+  digitalWrite(RIGHT_IN1, HIGH);
+  digitalWrite(RIGHT_IN2, LOW);
+
+  digitalWrite(LEFT_IN1, HIGH);
+  digitalWrite(LEFT_IN2, LOW);
+}
+
+void moveBackward() {
+  digitalWrite(RIGHT_IN1, LOW);
+  digitalWrite(RIGHT_IN2, HIGH);
+
+  digitalWrite(LEFT_IN1, LOW);
+  digitalWrite(LEFT_IN2, HIGH);
+}
+
+void turnLeft() {
+  // 오른쪽 바퀴 앞으로, 왼쪽 바퀴 뒤로
+  digitalWrite(RIGHT_IN1, HIGH);
+  digitalWrite(RIGHT_IN2, LOW);
+
+  digitalWrite(LEFT_IN1, LOW);
+  digitalWrite(LEFT_IN2, HIGH);
+}
+
+void turnRight() {
+  // 오른쪽 바퀴 뒤로, 왼쪽 바퀴 앞으로
+  digitalWrite(RIGHT_IN1, LOW);
+  digitalWrite(RIGHT_IN2, HIGH);
+
+  digitalWrite(LEFT_IN1, HIGH);
+  digitalWrite(LEFT_IN2, LOW);
+}
+
+void stopWheels() {
+  digitalWrite(RIGHT_IN1, LOW);
+  digitalWrite(RIGHT_IN2, LOW);
+
+  digitalWrite(LEFT_IN1, LOW);
+  digitalWrite(LEFT_IN2, LOW);
+}
+
+// -------------------- Forklift control --------------------
+
+void forkUp() {
+  digitalWrite(FORK_IN1, HIGH);
+  digitalWrite(FORK_IN2, LOW);
+}
+
+void forkDown() {
+  digitalWrite(FORK_IN1, LOW);
+  digitalWrite(FORK_IN2, HIGH);
+}
+
+void stopFork() {
+  digitalWrite(FORK_IN1, LOW);
+  digitalWrite(FORK_IN2, LOW);
+}
+
+// -------------------- Stop all --------------------
+
+void stopAll() {
+  stopWheels();
+  stopFork();
+
+  wheelMoving = false;
+  forkMoving = false;
+}
