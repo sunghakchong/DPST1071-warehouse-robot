@@ -6,32 +6,31 @@ SoftwareSerial hm10(2, 3);
 
 // ======================================================
 // SPEED CONTROL SECTION
-// ------------------------------------------------------
-// L293D Enable pins must be connected to PWM pins.
-// Speed range: 0 ~ 255
-//
-// H = Gear 1: speed range 30 ~ 90
-// G = Gear 2: speed range 90 ~ 150
-//
-// The robot starts from the selected minimum speed and
-// increases to the selected maximum speed while the same
-// direction command is repeatedly received.
 // ======================================================
 
-const int GEAR1_MIN_SPEED = 50;
-const int GEAR1_MAX_SPEED = 120;
+const int GEAR1_MIN_SPEED = 100;
+const int GEAR1_MAX_SPEED = 150;
 
-const int GEAR2_MIN_SPEED = 120;
-const int GEAR2_MAX_SPEED = 200;
+const int GEAR2_MIN_SPEED = 100;
+const int GEAR2_MAX_SPEED = 150;
 
-// Current selected speed range
 int currentMinWheelSpeed = GEAR1_MIN_SPEED;
 int currentMaxWheelSpeed = GEAR1_MAX_SPEED;
 
 const int FORK_SPEED = 20;
 
-// Time needed to reach maximum speed
-const unsigned long RAMP_TIME = 5000; // ms
+// No acceleration for now because min and max are both 200
+const unsigned long RAMP_TIME = 1000; // ms
+
+// If one button press keeps the motor moving too long,
+// reduce this value.
+// If the app sends repeated commands while held, keep this
+// slightly longer than the app repeat interval.
+const unsigned long COMMAND_TIMEOUT = 200; // ms
+
+// ======================================================
+// MOTOR PINS
+// ======================================================
 
 // Right wheel motor
 const int RIGHT_EN = 5;   // L293D pin 1, PWM speed control
@@ -44,22 +43,19 @@ const int LEFT_IN1 = 8;   // L293D pin 15
 const int LEFT_IN2 = 12;  // L293D pin 10
 
 // Forklift motor
-const int FORK_EN = 10;   // Second L293D pin 1, PWM speed control
-const int FORK_IN1 = 11;  // Second L293D pin 2
-const int FORK_IN2 = 13;  // Second L293D pin 7
+const int FORK_EN = 10;
+const int FORK_IN1 = 11;
+const int FORK_IN2 = 13;
 
-// Auto-stop timeout when no command is received from the button
-const unsigned long COMMAND_TIMEOUT = 300; // ms
+// ======================================================
+// STATE VARIABLES
+// ======================================================
 
 unsigned long lastWheelCommandTime = 0;
 unsigned long lastForkCommandTime = 0;
 
 bool wheelMoving = false;
 bool forkMoving = false;
-
-// ======================================================
-// ACCELERATION CONTROL SECTION
-// ======================================================
 
 char currentWheelCommand = '\0';
 unsigned long wheelCommandStartTime = 0;
@@ -83,40 +79,36 @@ void setup() {
   stopAll();
 
   Serial.println("BLE robot control ready.");
-  Serial.println("A = forward while pressed");
-  Serial.println("C = backward while pressed");
-  Serial.println("D = left while pressed");
-  Serial.println("B = right while pressed");
-  Serial.println("E = fork up while pressed");
-  Serial.println("F = fork down while pressed");
-  Serial.println("H = gear 1, speed 30-90");
-  Serial.println("G = gear 2, speed 90-150");
+  Serial.println("A = forward");
+  Serial.println("B = turn right");
+  Serial.println("C = backward");
+  Serial.println("D = turn left");
+  Serial.println("R = test right wheel only");
+  Serial.println("L = test left wheel only");
+  Serial.println("E = fork up");
+  Serial.println("F = fork down");
+  Serial.println("H = gear 1");
+  Serial.println("G = gear 2");
   Serial.println("S = stop all");
 }
 
 void loop() {
   if (hm10.available()) {
     char data = hm10.read();
+    data = toupper(data);
 
     Serial.print("Received: ");
     Serial.println(data);
 
-    // -------------------- Wheels --------------------
-
-    if (data == 'A' || data == 'a' ||
-        data == 'C' || data == 'c' ||
-        data == 'D' || data == 'd' ||
-        data == 'B' || data == 'b') {
-
+    if (data == 'A' || data == 'B' || data == 'C' || data == 'D' ||
+        data == 'R' || data == 'L') {
       handleWheelCommand(data);
 
       wheelMoving = true;
       lastWheelCommandTime = millis();
     }
 
-    // -------------------- Forklift --------------------
-
-    else if (data == 'E' || data == 'e') {
+    else if (data == 'E') {
       forkUp();
       forkMoving = true;
       lastForkCommandTime = millis();
@@ -125,7 +117,7 @@ void loop() {
       Serial.println("Fork up");
     }
 
-    else if (data == 'F' || data == 'f') {
+    else if (data == 'F') {
       forkDown();
       forkMoving = true;
       lastForkCommandTime = millis();
@@ -134,25 +126,21 @@ void loop() {
       Serial.println("Fork down");
     }
 
-    // -------------------- Gear control --------------------
-
-    else if (data == 'H' || data == 'h') {
+    else if (data == 'H') {
       setGear1();
 
-      hm10.println("Gear 1 selected: speed 30-90");
-      Serial.println("Gear 1 selected: speed 30-90");
+      hm10.println("Gear 1 selected");
+      Serial.println("Gear 1 selected");
     }
 
-    else if (data == 'G' || data == 'g') {
+    else if (data == 'G') {
       setGear2();
 
-      hm10.println("Gear 2 selected: speed 90-150");
-      Serial.println("Gear 2 selected: speed 90-150");
+      hm10.println("Gear 2 selected");
+      Serial.println("Gear 2 selected");
     }
 
-    // -------------------- Emergency / full stop --------------------
-
-    else if (data == 'S' || data == 's') {
+    else if (data == 'S') {
       stopAll();
 
       hm10.println("Stop all");
@@ -160,18 +148,18 @@ void loop() {
     }
   }
 
-  // Stop the wheels if no wheel command is received for a certain time
   if (wheelMoving && millis() - lastWheelCommandTime > COMMAND_TIMEOUT) {
     stopWheels();
     wheelMoving = false;
     currentWheelCommand = '\0';
+
     Serial.println("Wheels auto stop");
   }
 
-  // Stop the forklift if no forklift command is received for a certain time
   if (forkMoving && millis() - lastForkCommandTime > COMMAND_TIMEOUT) {
     stopFork();
     forkMoving = false;
+
     Serial.println("Fork auto stop");
   }
 }
@@ -183,27 +171,20 @@ void loop() {
 void setGear1() {
   currentMinWheelSpeed = GEAR1_MIN_SPEED;
   currentMaxWheelSpeed = GEAR1_MAX_SPEED;
-
-  // Reset acceleration when gear changes
   currentWheelCommand = '\0';
 }
 
 void setGear2() {
   currentMinWheelSpeed = GEAR2_MIN_SPEED;
   currentMaxWheelSpeed = GEAR2_MAX_SPEED;
-
-  // Reset acceleration when gear changes
   currentWheelCommand = '\0';
 }
 
 // ======================================================
-// WHEEL COMMAND + ACCELERATION CONTROL
+// WHEEL COMMAND CONTROL
 // ======================================================
 
 void handleWheelCommand(char command) {
-  command = toupper(command);
-
-  // If direction changed, reset acceleration timer
   if (command != currentWheelCommand) {
     currentWheelCommand = command;
     wheelCommandStartTime = millis();
@@ -220,6 +201,15 @@ void handleWheelCommand(char command) {
     Serial.println(currentSpeed);
   }
 
+  else if (command == 'B') {
+    turnRight(currentSpeed);
+    hm10.print("Right turn speed: ");
+    hm10.println(currentSpeed);
+
+    Serial.print("Right turn speed: ");
+    Serial.println(currentSpeed);
+  }
+
   else if (command == 'C') {
     moveBackward(currentSpeed);
     hm10.print("Backward speed: ");
@@ -231,19 +221,28 @@ void handleWheelCommand(char command) {
 
   else if (command == 'D') {
     turnLeft(currentSpeed);
-    hm10.print("Left speed: ");
+    hm10.print("Left turn speed: ");
     hm10.println(currentSpeed);
 
-    Serial.print("Left speed: ");
+    Serial.print("Left turn speed: ");
     Serial.println(currentSpeed);
   }
 
-  else if (command == 'B') {
-    turnRight(currentSpeed);
-    hm10.print("Right speed: ");
+  else if (command == 'R') {
+    testRightWheel(currentSpeed);
+    hm10.print("Right wheel test speed: ");
     hm10.println(currentSpeed);
 
-    Serial.print("Right speed: ");
+    Serial.print("Right wheel test speed: ");
+    Serial.println(currentSpeed);
+  }
+
+  else if (command == 'L') {
+    testLeftWheel(currentSpeed);
+    hm10.print("Left wheel test speed: ");
+    hm10.println(currentSpeed);
+
+    Serial.print("Left wheel test speed: ");
     Serial.println(currentSpeed);
   }
 }
@@ -266,61 +265,108 @@ int calculateRampSpeed() {
   return constrain(speedValue, currentMinWheelSpeed, currentMaxWheelSpeed);
 }
 
-// -------------------- Wheel control --------------------
+// ======================================================
+// LOW-LEVEL MOTOR CONTROL
+// ------------------------------------------------------
+// Positive power = forward
+// Negative power = backward
+// 0 = stop
+// ======================================================
 
+void setRightMotor(int power, int speedValue) {
+  if (power > 0) {
+    // Right wheel forward
+    digitalWrite(RIGHT_IN1, LOW);
+    digitalWrite(RIGHT_IN2, HIGH);
+    analogWrite(RIGHT_EN, speedValue);
+  }
+
+  else if (power < 0) {
+    // Right wheel backward
+    digitalWrite(RIGHT_IN1, HIGH);
+    digitalWrite(RIGHT_IN2, LOW);
+    analogWrite(RIGHT_EN, speedValue);
+  }
+
+  else {
+    digitalWrite(RIGHT_IN1, LOW);
+    digitalWrite(RIGHT_IN2, LOW);
+    analogWrite(RIGHT_EN, 0);
+  }
+}
+
+void setLeftMotor(int power, int speedValue) {
+  if (power > 0) {
+    // Left wheel forward
+    digitalWrite(LEFT_IN1, LOW);
+    digitalWrite(LEFT_IN2, HIGH);
+    analogWrite(LEFT_EN, speedValue);
+  }
+
+  else if (power < 0) {
+    // Left wheel backward
+    digitalWrite(LEFT_IN1, HIGH);
+    digitalWrite(LEFT_IN2, LOW);
+    analogWrite(LEFT_EN, speedValue);
+  }
+
+  else {
+    digitalWrite(LEFT_IN1, LOW);
+    digitalWrite(LEFT_IN2, LOW);
+    analogWrite(LEFT_EN, 0);
+  }
+}
+
+// ======================================================
+// MOVEMENT FUNCTIONS
+// ======================================================
+
+// A = forward
 void moveForward(int speedValue) {
-  digitalWrite(RIGHT_IN1, HIGH);
-  digitalWrite(RIGHT_IN2, LOW);
-  analogWrite(RIGHT_EN, speedValue);
-
-  digitalWrite(LEFT_IN1, HIGH);
-  digitalWrite(LEFT_IN2, LOW);
-  analogWrite(LEFT_EN, speedValue);
+  setRightMotor(1, speedValue);
+  setLeftMotor(1, speedValue);
 }
 
+// C = backward
 void moveBackward(int speedValue) {
-  digitalWrite(RIGHT_IN1, LOW);
-  digitalWrite(RIGHT_IN2, HIGH);
-  analogWrite(RIGHT_EN, speedValue);
-
-  digitalWrite(LEFT_IN1, LOW);
-  digitalWrite(LEFT_IN2, HIGH);
-  analogWrite(LEFT_EN, speedValue);
+  setRightMotor(-1, speedValue);
+  setLeftMotor(-1, speedValue);
 }
 
+// D = turn left
 void turnLeft(int speedValue) {
-  // Right wheel moves forward, left wheel moves backward
-  digitalWrite(RIGHT_IN1, HIGH);
-  digitalWrite(RIGHT_IN2, LOW);
-  analogWrite(RIGHT_EN, speedValue);
-
-  digitalWrite(LEFT_IN1, LOW);
-  digitalWrite(LEFT_IN2, HIGH);
-  analogWrite(LEFT_EN, speedValue);
+  // Right wheel forward, left wheel backward
+  setRightMotor(1, speedValue);
+  setLeftMotor(-1, speedValue);
 }
 
+// B = turn right
 void turnRight(int speedValue) {
-  // Right wheel moves backward, left wheel moves forward
-  digitalWrite(RIGHT_IN1, LOW);
-  digitalWrite(RIGHT_IN2, HIGH);
-  analogWrite(RIGHT_EN, speedValue);
+  // Right wheel backward, left wheel forward
+  setRightMotor(-1, speedValue);
+  setLeftMotor(1, speedValue);
+}
 
-  digitalWrite(LEFT_IN1, HIGH);
-  digitalWrite(LEFT_IN2, LOW);
-  analogWrite(LEFT_EN, speedValue);
+// R = right wheel only test
+void testRightWheel(int speedValue) {
+  setRightMotor(1, speedValue);
+  setLeftMotor(0, 0);
+}
+
+// L = left wheel only test
+void testLeftWheel(int speedValue) {
+  setRightMotor(0, 0);
+  setLeftMotor(1, speedValue);
 }
 
 void stopWheels() {
-  digitalWrite(RIGHT_IN1, LOW);
-  digitalWrite(RIGHT_IN2, LOW);
-  analogWrite(RIGHT_EN, 0);
-
-  digitalWrite(LEFT_IN1, LOW);
-  digitalWrite(LEFT_IN2, LOW);
-  analogWrite(LEFT_EN, 0);
+  setRightMotor(0, 0);
+  setLeftMotor(0, 0);
 }
 
-// -------------------- Forklift control --------------------
+// ======================================================
+// FORKLIFT CONTROL
+// ======================================================
 
 void forkUp() {
   digitalWrite(FORK_IN1, HIGH);
@@ -340,7 +386,9 @@ void stopFork() {
   analogWrite(FORK_EN, 0);
 }
 
-// -------------------- Stop all --------------------
+// ======================================================
+// STOP ALL
+// ======================================================
 
 void stopAll() {
   stopWheels();
