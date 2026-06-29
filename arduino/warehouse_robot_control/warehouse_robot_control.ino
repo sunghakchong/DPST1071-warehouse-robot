@@ -10,16 +10,28 @@ SoftwareSerial hm10(2, 3);
 // L293D Enable pins must be connected to PWM pins.
 // Speed range: 0 ~ 255
 //
-// The robot starts slowly and increases speed while
-// the same direction command is repeatedly received.
+// H = Gear 1: speed range 30 ~ 90
+// G = Gear 2: speed range 90 ~ 150
+//
+// The robot starts from the selected minimum speed and
+// increases to the selected maximum speed while the same
+// direction command is repeatedly received.
 // ======================================================
 
-const int MIN_WHEEL_SPEED = 90;     // Starting speed
-const int MAX_WHEEL_SPEED = 250;    // Maximum speed
-const int FORK_SPEED = 250;
+const int GEAR1_MIN_SPEED = 50;
+const int GEAR1_MAX_SPEED = 120;
+
+const int GEAR2_MIN_SPEED = 120;
+const int GEAR2_MAX_SPEED = 200;
+
+// Current selected speed range
+int currentMinWheelSpeed = GEAR1_MIN_SPEED;
+int currentMaxWheelSpeed = GEAR1_MAX_SPEED;
+
+const int FORK_SPEED = 20;
 
 // Time needed to reach maximum speed
-const unsigned long RAMP_TIME = 3000; // ms, 2 seconds to reach max speed
+const unsigned long RAMP_TIME = 5000; // ms
 
 // Right wheel motor
 const int RIGHT_EN = 5;   // L293D pin 1, PWM speed control
@@ -37,7 +49,7 @@ const int FORK_IN1 = 11;  // Second L293D pin 2
 const int FORK_IN2 = 13;  // Second L293D pin 7
 
 // Auto-stop timeout when no command is received from the button
-const unsigned long COMMAND_TIMEOUT = 400; // ms
+const unsigned long COMMAND_TIMEOUT = 300; // ms
 
 unsigned long lastWheelCommandTime = 0;
 unsigned long lastForkCommandTime = 0;
@@ -47,10 +59,6 @@ bool forkMoving = false;
 
 // ======================================================
 // ACCELERATION CONTROL SECTION
-// ------------------------------------------------------
-// currentWheelCommand stores the current direction.
-// wheelCommandStartTime stores when that direction started.
-// The longer the same command is held, the higher the speed.
 // ======================================================
 
 char currentWheelCommand = '\0';
@@ -81,7 +89,9 @@ void setup() {
   Serial.println("B = right while pressed");
   Serial.println("E = fork up while pressed");
   Serial.println("F = fork down while pressed");
-  Serial.println("H = stop all");
+  Serial.println("H = gear 1, speed 30-90");
+  Serial.println("G = gear 2, speed 90-150");
+  Serial.println("S = stop all");
 }
 
 void loop() {
@@ -124,9 +134,25 @@ void loop() {
       Serial.println("Fork down");
     }
 
-    // -------------------- Emergency / full stop --------------------
+    // -------------------- Gear control --------------------
 
     else if (data == 'H' || data == 'h') {
+      setGear1();
+
+      hm10.println("Gear 1 selected: speed 30-90");
+      Serial.println("Gear 1 selected: speed 30-90");
+    }
+
+    else if (data == 'G' || data == 'g') {
+      setGear2();
+
+      hm10.println("Gear 2 selected: speed 90-150");
+      Serial.println("Gear 2 selected: speed 90-150");
+    }
+
+    // -------------------- Emergency / full stop --------------------
+
+    else if (data == 'S' || data == 's') {
       stopAll();
 
       hm10.println("Stop all");
@@ -148,6 +174,26 @@ void loop() {
     forkMoving = false;
     Serial.println("Fork auto stop");
   }
+}
+
+// ======================================================
+// GEAR CONTROL
+// ======================================================
+
+void setGear1() {
+  currentMinWheelSpeed = GEAR1_MIN_SPEED;
+  currentMaxWheelSpeed = GEAR1_MAX_SPEED;
+
+  // Reset acceleration when gear changes
+  currentWheelCommand = '\0';
+}
+
+void setGear2() {
+  currentMinWheelSpeed = GEAR2_MIN_SPEED;
+  currentMaxWheelSpeed = GEAR2_MAX_SPEED;
+
+  // Reset acceleration when gear changes
+  currentWheelCommand = '\0';
 }
 
 // ======================================================
@@ -206,11 +252,18 @@ int calculateRampSpeed() {
   unsigned long heldTime = millis() - wheelCommandStartTime;
 
   if (heldTime >= RAMP_TIME) {
-    return MAX_WHEEL_SPEED;
+    return currentMaxWheelSpeed;
   }
 
-  int speedValue = map(heldTime, 0, RAMP_TIME, MIN_WHEEL_SPEED, MAX_WHEEL_SPEED);
-  return constrain(speedValue, MIN_WHEEL_SPEED, MAX_WHEEL_SPEED);
+  int speedValue = map(
+    heldTime,
+    0,
+    RAMP_TIME,
+    currentMinWheelSpeed,
+    currentMaxWheelSpeed
+  );
+
+  return constrain(speedValue, currentMinWheelSpeed, currentMaxWheelSpeed);
 }
 
 // -------------------- Wheel control --------------------
