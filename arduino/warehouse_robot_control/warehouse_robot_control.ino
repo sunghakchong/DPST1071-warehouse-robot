@@ -4,17 +4,36 @@ SoftwareSerial hm10(2, 3);
 // Arduino D2 = RX ← HM-10 TXD
 // Arduino D3 = TX → HM-10 RXD
 
+// ======================================================
+// SPEED CONTROL SECTION
+// ------------------------------------------------------
+// L293D Enable pins must be connected to PWM pins.
+// Speed range: 0 ~ 255
+// 255 = full speed
+// 180 = medium-fast
+// 140 = medium
+// 100 = slow
+// Too low may not start the motor.
+// ======================================================
+
+const int RIGHT_SPEED = 250;
+const int LEFT_SPEED = 250;
+const int FORK_SPEED = 250;
+
 // Right wheel motor
-const int RIGHT_IN1 = 6;
-const int RIGHT_IN2 = 7;
+const int RIGHT_EN = 5;   // L293D pin 1, PWM speed control
+const int RIGHT_IN1 = 6;  // L293D pin 2
+const int RIGHT_IN2 = 7;  // L293D pin 7
 
 // Left wheel motor
-const int LEFT_IN1 = 8;
-const int LEFT_IN2 = 9;
+const int LEFT_EN = 9;    // L293D pin 9, PWM speed control
+const int LEFT_IN1 = 8;   // L293D pin 15
+const int LEFT_IN2 = 12;  // L293D pin 10
 
 // Forklift motor
-const int FORK_IN1 = 10;
-const int FORK_IN2 = 11;
+const int FORK_EN = 10;   // Second L293D pin 1, PWM speed control
+const int FORK_IN1 = 11;  // Second L293D pin 2
+const int FORK_IN2 = 13;  // Second L293D pin 7
 
 // Auto-stop timeout when no command is received from the button
 const unsigned long COMMAND_TIMEOUT = 400; // ms
@@ -29,12 +48,15 @@ void setup() {
   Serial.begin(9600);
   hm10.begin(9600);
 
+  pinMode(RIGHT_EN, OUTPUT);
   pinMode(RIGHT_IN1, OUTPUT);
   pinMode(RIGHT_IN2, OUTPUT);
 
+  pinMode(LEFT_EN, OUTPUT);
   pinMode(LEFT_IN1, OUTPUT);
   pinMode(LEFT_IN2, OUTPUT);
 
+  pinMode(FORK_EN, OUTPUT);
   pinMode(FORK_IN1, OUTPUT);
   pinMode(FORK_IN2, OUTPUT);
 
@@ -145,43 +167,53 @@ void loop() {
 void moveForward() {
   digitalWrite(RIGHT_IN1, HIGH);
   digitalWrite(RIGHT_IN2, LOW);
+  analogWrite(RIGHT_EN, RIGHT_SPEED); // speed control
 
   digitalWrite(LEFT_IN1, HIGH);
   digitalWrite(LEFT_IN2, LOW);
+  analogWrite(LEFT_EN, LEFT_SPEED);   // speed control
 }
 
 void moveBackward() {
   digitalWrite(RIGHT_IN1, LOW);
   digitalWrite(RIGHT_IN2, HIGH);
+  analogWrite(RIGHT_EN, RIGHT_SPEED); // speed control
 
   digitalWrite(LEFT_IN1, LOW);
   digitalWrite(LEFT_IN2, HIGH);
+  analogWrite(LEFT_EN, LEFT_SPEED);   // speed control
 }
 
 void turnLeft() {
   // Right wheel moves forward, left wheel moves backward
   digitalWrite(RIGHT_IN1, HIGH);
   digitalWrite(RIGHT_IN2, LOW);
+  analogWrite(RIGHT_EN, RIGHT_SPEED); // speed control
 
   digitalWrite(LEFT_IN1, LOW);
   digitalWrite(LEFT_IN2, HIGH);
+  analogWrite(LEFT_EN, LEFT_SPEED);   // speed control
 }
 
 void turnRight() {
   // Right wheel moves backward, left wheel moves forward
   digitalWrite(RIGHT_IN1, LOW);
   digitalWrite(RIGHT_IN2, HIGH);
+  analogWrite(RIGHT_EN, RIGHT_SPEED); // speed control
 
   digitalWrite(LEFT_IN1, HIGH);
   digitalWrite(LEFT_IN2, LOW);
+  analogWrite(LEFT_EN, LEFT_SPEED);   // speed control
 }
 
 void stopWheels() {
   digitalWrite(RIGHT_IN1, LOW);
   digitalWrite(RIGHT_IN2, LOW);
+  analogWrite(RIGHT_EN, 0); // stop speed signal
 
   digitalWrite(LEFT_IN1, LOW);
   digitalWrite(LEFT_IN2, LOW);
+  analogWrite(LEFT_EN, 0);  // stop speed signal
 }
 
 // -------------------- Forklift control --------------------
@@ -189,16 +221,19 @@ void stopWheels() {
 void forkUp() {
   digitalWrite(FORK_IN1, HIGH);
   digitalWrite(FORK_IN2, LOW);
+  analogWrite(FORK_EN, FORK_SPEED); // speed control
 }
 
 void forkDown() {
   digitalWrite(FORK_IN1, LOW);
   digitalWrite(FORK_IN2, HIGH);
+  analogWrite(FORK_EN, FORK_SPEED); // speed control
 }
 
 void stopFork() {
   digitalWrite(FORK_IN1, LOW);
   digitalWrite(FORK_IN2, LOW);
+  analogWrite(FORK_EN, 0); // stop speed signal
 }
 
 // -------------------- Stop all --------------------
