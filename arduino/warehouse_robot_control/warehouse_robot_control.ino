@@ -8,11 +8,11 @@ SoftwareSerial hm10(2, 3);
 // SPEED CONTROL SECTION
 // ======================================================
 
-const int GEAR1_MIN_SPEED = 100;
-const int GEAR1_MAX_SPEED = 150;
+const int GEAR1_MIN_SPEED = 80;
+const int GEAR1_MAX_SPEED = 130;
 
-const int GEAR2_MIN_SPEED = 100;
-const int GEAR2_MAX_SPEED = 150;
+const int GEAR2_MIN_SPEED = 130;
+const int GEAR2_MAX_SPEED = 180;
 
 int currentMinWheelSpeed = GEAR1_MIN_SPEED;
 int currentMaxWheelSpeed = GEAR1_MAX_SPEED;
@@ -20,7 +20,7 @@ int currentMaxWheelSpeed = GEAR1_MAX_SPEED;
 const int FORK_SPEED = 20;
 
 // No acceleration for now because min and max are both 200
-const unsigned long RAMP_TIME = 1000; // ms
+const unsigned long RAMP_TIME = 3000; // ms
 
 // If one button press keeps the motor moving too long,
 // reduce this value.
