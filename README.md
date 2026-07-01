@@ -309,7 +309,17 @@ Optional testing buttons:
 
 ## Current Speed Settings
 
-Current code uses fixed speed values for testing.
+Current code uses variable speed values for testing.
+
+```cpp
+const int GEAR1_MIN_SPEED = 80;
+const int GEAR1_MAX_SPEED = 130;
+
+const int GEAR2_MIN_SPEED = 130;
+const int GEAR2_MAX_SPEED = 180;
+```
+
+The speed range can be adjusted later. Example:
 
 ```cpp
 const int GEAR1_MIN_SPEED = 200;
@@ -318,18 +328,7 @@ const int GEAR1_MAX_SPEED = 200;
 const int GEAR2_MIN_SPEED = 200;
 const int GEAR2_MAX_SPEED = 200;
 ```
-
 This means both gear modes currently run at the same speed.
-
-The speed range can be adjusted later. Example:
-
-```cpp
-const int GEAR1_MIN_SPEED = 80;
-const int GEAR1_MAX_SPEED = 140;
-
-const int GEAR2_MIN_SPEED = 140;
-const int GEAR2_MAX_SPEED = 220;
-```
 
 The L293D Enable pins must be connected to PWM pins for speed control to work.
 
