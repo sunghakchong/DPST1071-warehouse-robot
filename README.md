@@ -120,6 +120,27 @@ When the notch or dot on the L293D is facing upward, the pin numbering is:
 
 The first L293D controls the right and left wheel motors.
 
+### First L293D — Right and Left Wheel Motors
+
+| First L293D Pin | Arduino / Motor Connection | Purpose |
+|---:|---|---|
+| Pin 1 | Arduino D5 | Right motor enable / speed |
+| Pin 2 | Arduino D6 | Right motor IN1 |
+| Pin 3 | Right motor wire 1 | Right motor output |
+| Pin 4 | GND | Ground |
+| Pin 5 | GND | Ground |
+| Pin 6 | Right motor wire 2 | Right motor output |
+| Pin 7 | Arduino D7 | Right motor IN2 |
+| Pin 8 | VIN / external battery + | Motor power |
+| Pin 9 | Arduino D9 | Left motor enable / speed |
+| Pin 10 | Arduino D12 | Left motor IN2 |
+| Pin 11 | Left motor wire 1 | Left motor output |
+| Pin 12 | GND | Ground |
+| Pin 13 | GND | Ground |
+| Pin 14 | Left motor wire 2 | Left motor output |
+| Pin 15 | Arduino D8 | Left motor IN1 |
+| Pin 16 | Arduino 5V | Logic power |
+
 ### Right Wheel Motor
 
 | L293D Pin | Arduino / Motor Connection | Purpose |
@@ -176,6 +197,29 @@ The second L293D controls two lifting motors for the forklift/lifting system.
 
 The lifting system uses two motors so that both sides of the lifting mechanism can move together. Both lifting motors run at a fixed PWM speed of `70`.
 
+### Second L293D — Lifting Motors 1 and 2
+
+| Second L293D Pin | Arduino / Motor Connection | Purpose |
+|---:|---|---|
+| Pin 1 | Arduino D10 | Lift motor 1 enable / speed |
+| Pin 2 | Arduino D4 | Lift motor 1 IN1 |
+| Pin 3 | Lift motor 1 wire 1 | Lift motor 1 output |
+| Pin 4 | GND | Ground |
+| Pin 5 | GND | Ground |
+| Pin 6 | Lift motor 1 wire 2 | Lift motor 1 output |
+| Pin 7 | Arduino D13 | Lift motor 1 IN2 |
+| Pin 8 | VIN / external battery + | Motor power |
+| Pin 9 | Arduino D11 | Lift motor 2 enable / speed |
+| Pin 10 | Arduino A1 | Lift motor 2 IN2 |
+| Pin 11 | Lift motor 2 wire 1 | Lift motor 2 output |
+| Pin 12 | GND | Ground |
+| Pin 13 | GND | Ground |
+| Pin 14 | Lift motor 2 wire 2 | Lift motor 2 output |
+| Pin 15 | Arduino A0 | Lift motor 2 IN1 |
+| Pin 16 | Arduino 5V | Logic power |
+
+A0 and A1 are used as digital output pins in this code.
+
 ### Lift Motor 1
 
 | Second L293D Pin | Arduino / Motor Connection | Purpose |
@@ -201,8 +245,6 @@ The lifting system uses two motors so that both sides of the lifting mechanism c
 | Pin 14 | Lift motor 2 wire 2 | Motor output |
 | Pin 15 | Arduino A0 | Lift motor 2 direction IN1 |
 | Pin 16 | Arduino 5V | Logic power |
-
-A0 and A1 are used as digital output pins in this code.
 
 ### Full Second L293D Wiring Table
 
