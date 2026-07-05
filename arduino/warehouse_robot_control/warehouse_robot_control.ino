@@ -17,9 +17,10 @@ const int GEAR2_MAX_SPEED = 180;
 int currentMinWheelSpeed = GEAR1_MIN_SPEED;
 int currentMaxWheelSpeed = GEAR1_MAX_SPEED;
 
-const int FORK_SPEED = 20;
+// Two lifting motors speed using second L293D
+const int LIFT_SPEED = 70;
 
-// No acceleration for now because min and max are both 200
+// Wheel acceleration ramp
 const unsigned long RAMP_TIME = 3000; // ms
 
 // If one button press keeps the motor moving too long,
@@ -32,38 +33,56 @@ const unsigned long COMMAND_TIMEOUT = 200; // ms
 // MOTOR PINS
 // ======================================================
 
+// ======================================================
+// First L293D: right and left wheel motors
+// ======================================================
+
 // Right wheel motor
-const int RIGHT_EN = 5;   // L293D pin 1, PWM speed control
-const int RIGHT_IN1 = 6;  // L293D pin 2
-const int RIGHT_IN2 = 7;  // L293D pin 7
+const int RIGHT_EN = 5;   // First L293D pin 1, PWM speed control
+const int RIGHT_IN1 = 6;  // First L293D pin 2
+const int RIGHT_IN2 = 7;  // First L293D pin 7
 
 // Left wheel motor
-const int LEFT_EN = 9;    // L293D pin 9, PWM speed control
-const int LEFT_IN1 = 8;   // L293D pin 15
-const int LEFT_IN2 = 12;  // L293D pin 10
+const int LEFT_EN = 9;    // First L293D pin 9, PWM speed control
+const int LEFT_IN1 = 8;   // First L293D pin 15
+const int LEFT_IN2 = 12;  // First L293D pin 10
 
-// Forklift motor
-const int FORK_EN = 10;
-const int FORK_IN1 = 11;
-const int FORK_IN2 = 13;
+// ======================================================
+// Second L293D: two lifting motors
+// ======================================================
+
+// Lift motor 1
+const int LIFT1_EN = 10;   // Second L293D pin 1, PWM speed control
+const int LIFT1_IN1 = 4;   // Second L293D pin 2
+const int LIFT1_IN2 = 13;  // Second L293D pin 7
+
+// Lift motor 2
+const int LIFT2_EN = 11;   // Second L293D pin 9, PWM speed control
+const int LIFT2_IN1 = A0;  // Second L293D pin 15
+const int LIFT2_IN2 = A1;  // Second L293D pin 10
 
 // ======================================================
 // STATE VARIABLES
 // ======================================================
 
 unsigned long lastWheelCommandTime = 0;
-unsigned long lastForkCommandTime = 0;
+unsigned long lastLiftCommandTime = 0;
 
 bool wheelMoving = false;
-bool forkMoving = false;
+bool liftMoving = false;
 
 char currentWheelCommand = '\0';
 unsigned long wheelCommandStartTime = 0;
+
+// ======================================================
+// SETUP
+// ======================================================
 
 void setup() {
   Serial.begin(9600);
   hm10.begin(9600);
 
+  // Wheel motors
   pinMode(RIGHT_EN, OUTPUT);
   pinMode(RIGHT_IN1, OUTPUT);
   pinMode(RIGHT_IN2, OUTPUT);
@@ -72,9 +91,14 @@ void setup() {
   pinMode(LEFT_IN1, OUTPUT);
   pinMode(LEFT_IN2, OUTPUT);
 
-  pinMode(FORK_EN, OUTPUT);
-  pinMode(FORK_IN1, OUTPUT);
-  pinMode(FORK_IN2, OUTPUT);
+  // Lift motors
+  pinMode(LIFT1_EN, OUTPUT);
+  pinMode(LIFT1_IN1, OUTPUT);
+  pinMode(LIFT1_IN2, OUTPUT);
+
+  pinMode(LIFT2_EN, OUTPUT);
+  pinMode(LIFT2_IN1, OUTPUT);
+  pinMode(LIFT2_IN2, OUTPUT);
 
   stopAll();
 
@@ -85,12 +109,16 @@ void setup() {
   Serial.println("D = turn left");
   Serial.println("R = test right wheel only");
   Serial.println("L = test left wheel only");
-  Serial.println("E = fork up");
-  Serial.println("F = fork down");
+  Serial.println("E = lift up");
+  Serial.println("F = lift down");
   Serial.println("H = gear 1");
   Serial.println("G = gear 2");
   Serial.println("S = stop all");
 }
+
+// ======================================================
+// LOOP
+// ======================================================
 
 void loop() {
   if (hm10.available()) {
@@ -109,21 +137,21 @@ void loop() {
     }
 
     else if (data == 'E') {
-      forkUp();
-      forkMoving = true;
-      lastForkCommandTime = millis();
+      liftUp();
+      liftMoving = true;
+      lastLiftCommandTime = millis();
 
-      hm10.println("Fork up");
-      Serial.println("Fork up");
+      hm10.println("Lift up");
+      Serial.println("Lift up");
     }
 
     else if (data == 'F') {
-      forkDown();
-      forkMoving = true;
-      lastForkCommandTime = millis();
+      liftDown();
+      liftMoving = true;
+      lastLiftCommandTime = millis();
 
-      hm10.println("Fork down");
-      Serial.println("Fork down");
+      hm10.println("Lift down");
+      Serial.println("Lift down");
     }
 
     else if (data == 'H') {
@@ -156,11 +184,11 @@ void loop() {
     Serial.println("Wheels auto stop");
   }
 
-  if (forkMoving && millis() - lastForkCommandTime > COMMAND_TIMEOUT) {
-    stopFork();
-    forkMoving = false;
+  if (liftMoving && millis() - lastLiftCommandTime > COMMAND_TIMEOUT) {
+    stopLift();
+    liftMoving = false;
 
-    Serial.println("Fork auto stop");
+    Serial.println("Lift auto stop");
   }
 }
 
@@ -266,7 +294,7 @@ int calculateRampSpeed() {
 }
 
 // ======================================================
-// LOW-LEVEL MOTOR CONTROL
+// LOW-LEVEL WHEEL MOTOR CONTROL
 // ------------------------------------------------------
 // Positive power = forward
 // Negative power = backward
@@ -365,25 +393,72 @@ void stopWheels() {
 }
 
 // ======================================================
-// FORKLIFT CONTROL
+// LOW-LEVEL LIFT MOTOR CONTROL
+// ------------------------------------------------------
+// Positive power = lift up direction
+// Negative power = lift down direction
+// 0 = stop
 // ======================================================
 
-void forkUp() {
-  digitalWrite(FORK_IN1, HIGH);
-  digitalWrite(FORK_IN2, LOW);
-  analogWrite(FORK_EN, FORK_SPEED);
+void setLiftMotor1(int power, int speedValue) {
+  if (power > 0) {
+    digitalWrite(LIFT1_IN1, HIGH);
+    digitalWrite(LIFT1_IN2, LOW);
+    analogWrite(LIFT1_EN, speedValue);
+  }
+
+  else if (power < 0) {
+    digitalWrite(LIFT1_IN1, LOW);
+    digitalWrite(LIFT1_IN2, HIGH);
+    analogWrite(LIFT1_EN, speedValue);
+  }
+
+  else {
+    digitalWrite(LIFT1_IN1, LOW);
+    digitalWrite(LIFT1_IN2, LOW);
+    analogWrite(LIFT1_EN, 0);
+  }
 }
 
-void forkDown() {
-  digitalWrite(FORK_IN1, LOW);
-  digitalWrite(FORK_IN2, HIGH);
-  analogWrite(FORK_EN, FORK_SPEED);
+void setLiftMotor2(int power, int speedValue) {
+  if (power > 0) {
+    digitalWrite(LIFT2_IN1, HIGH);
+    digitalWrite(LIFT2_IN2, LOW);
+    analogWrite(LIFT2_EN, speedValue);
+  }
+
+  else if (power < 0) {
+    digitalWrite(LIFT2_IN1, LOW);
+    digitalWrite(LIFT2_IN2, HIGH);
+    analogWrite(LIFT2_EN, speedValue);
+  }
+
+  else {
+    digitalWrite(LIFT2_IN1, LOW);
+    digitalWrite(LIFT2_IN2, LOW);
+    analogWrite(LIFT2_EN, 0);
+  }
 }
 
-void stopFork() {
-  digitalWrite(FORK_IN1, LOW);
-  digitalWrite(FORK_IN2, LOW);
-  analogWrite(FORK_EN, 0);
+// ======================================================
+// LIFTING FUNCTIONS
+// ======================================================
+
+// E = lift up
+void liftUp() {
+  setLiftMotor1(1, LIFT_SPEED);
+  setLiftMotor2(1, LIFT_SPEED);
+}
+
+// F = lift down
+void liftDown() {
+  setLiftMotor1(-1, LIFT_SPEED);
+  setLiftMotor2(-1, LIFT_SPEED);
+}
+
+void stopLift() {
+  setLiftMotor1(0, 0);
+  setLiftMotor2(0, 0);
 }
 
 // ======================================================
@@ -392,9 +467,9 @@ void stopFork() {
 
 void stopAll() {
   stopWheels();
-  stopFork();
+  stopLift();
 
   wheelMoving = false;
-  forkMoving = false;
+  liftMoving = false;
   currentWheelCommand = '\0';
 }
