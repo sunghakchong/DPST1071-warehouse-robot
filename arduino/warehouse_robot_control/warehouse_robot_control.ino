@@ -8,20 +8,41 @@ SoftwareSerial hm10(2, 3);
 // SPEED CONTROL SECTION
 // ======================================================
 
-const int GEAR1_MIN_SPEED = 80;
-const int GEAR1_MAX_SPEED = 130;
+// ======================================================
+// RIGHT WHEEL SPEED SETTINGS
+// ======================================================
 
-const int GEAR2_MIN_SPEED = 130;
-const int GEAR2_MAX_SPEED = 180;
+const int RIGHT_GEAR1_MIN_SPEED = 70;
+const int RIGHT_GEAR1_MAX_SPEED = 70;
 
-int currentMinWheelSpeed = GEAR1_MIN_SPEED;
-int currentMaxWheelSpeed = GEAR1_MAX_SPEED;
+const int RIGHT_GEAR2_MIN_SPEED = 150;
+const int RIGHT_GEAR2_MAX_SPEED = 200;
+
+// Time for the right wheel to reach maximum speed
+const unsigned long RIGHT_RAMP_TIME = 2000; // ms
+
+// ======================================================
+// LEFT WHEEL SPEED SETTINGS
+// ======================================================
+
+const int LEFT_GEAR1_MIN_SPEED = 90;
+const int LEFT_GEAR1_MAX_SPEED = 90;
+
+const int LEFT_GEAR2_MIN_SPEED = 150;
+const int LEFT_GEAR2_MAX_SPEED = 200;
+
+// Time for the left wheel to reach maximum speed
+const unsigned long LEFT_RAMP_TIME = 500; // ms
+
+int currentRightMinWheelSpeed = RIGHT_GEAR1_MIN_SPEED;
+int currentRightMaxWheelSpeed = RIGHT_GEAR1_MAX_SPEED;
+
+int currentLeftMinWheelSpeed = LEFT_GEAR1_MIN_SPEED;
+int currentLeftMaxWheelSpeed = LEFT_GEAR1_MAX_SPEED;
 
 // Two lifting motors speed using second L293D
 const int LIFT_SPEED = 70;
 
-// Wheel acceleration ramp
-const unsigned long RAMP_TIME = 3000; // ms
 
 // If one button press keeps the motor moving too long,
 // reduce this value.
@@ -197,14 +218,22 @@ void loop() {
 // ======================================================
 
 void setGear1() {
-  currentMinWheelSpeed = GEAR1_MIN_SPEED;
-  currentMaxWheelSpeed = GEAR1_MAX_SPEED;
+  currentRightMinWheelSpeed = RIGHT_GEAR1_MIN_SPEED;
+  currentRightMaxWheelSpeed = RIGHT_GEAR1_MAX_SPEED;
+
+  currentLeftMinWheelSpeed = LEFT_GEAR1_MIN_SPEED;
+  currentLeftMaxWheelSpeed = LEFT_GEAR1_MAX_SPEED;
+
   currentWheelCommand = '\0';
 }
 
 void setGear2() {
-  currentMinWheelSpeed = GEAR2_MIN_SPEED;
-  currentMaxWheelSpeed = GEAR2_MAX_SPEED;
+  currentRightMinWheelSpeed = RIGHT_GEAR2_MIN_SPEED;
+  currentRightMaxWheelSpeed = RIGHT_GEAR2_MAX_SPEED;
+
+  currentLeftMinWheelSpeed = LEFT_GEAR2_MIN_SPEED;
+  currentLeftMaxWheelSpeed = LEFT_GEAR2_MAX_SPEED;
+
   currentWheelCommand = '\0';
 }
 
@@ -218,79 +247,114 @@ void handleWheelCommand(char command) {
     wheelCommandStartTime = millis();
   }
 
-  int currentSpeed = calculateRampSpeed();
+  int currentRightSpeed = calculateRightRampSpeed();
+  int currentLeftSpeed = calculateLeftRampSpeed();
 
   if (command == 'A') {
-    moveForward(currentSpeed);
-    hm10.print("Forward speed: ");
-    hm10.println(currentSpeed);
+    moveForward(currentRightSpeed, currentLeftSpeed);
+    hm10.print("Forward speed R/L: ");
+    hm10.print(currentRightSpeed);
+    hm10.print(" / ");
+    hm10.println(currentLeftSpeed);
 
-    Serial.print("Forward speed: ");
-    Serial.println(currentSpeed);
+    Serial.print("Forward speed R/L: ");
+    Serial.print(currentRightSpeed);
+    Serial.print(" / ");
+    Serial.println(currentLeftSpeed);
   }
 
   else if (command == 'B') {
-    turnRight(currentSpeed);
-    hm10.print("Right turn speed: ");
-    hm10.println(currentSpeed);
+    turnRight(currentRightSpeed, currentLeftSpeed);
+    hm10.print("Right turn speed R/L: ");
+    hm10.print(currentRightSpeed);
+    hm10.print(" / ");
+    hm10.println(currentLeftSpeed);
 
-    Serial.print("Right turn speed: ");
-    Serial.println(currentSpeed);
+    Serial.print("Right turn speed R/L: ");
+    Serial.print(currentRightSpeed);
+    Serial.print(" / ");
+    Serial.println(currentLeftSpeed);
   }
 
   else if (command == 'C') {
-    moveBackward(currentSpeed);
-    hm10.print("Backward speed: ");
-    hm10.println(currentSpeed);
+    moveBackward(currentRightSpeed, currentLeftSpeed);
+    hm10.print("Backward speed R/L: ");
+    hm10.print(currentRightSpeed);
+    hm10.print(" / ");
+    hm10.println(currentLeftSpeed);
 
-    Serial.print("Backward speed: ");
-    Serial.println(currentSpeed);
+    Serial.print("Backward speed R/L: ");
+    Serial.print(currentRightSpeed);
+    Serial.print(" / ");
+    Serial.println(currentLeftSpeed);
   }
 
   else if (command == 'D') {
-    turnLeft(currentSpeed);
-    hm10.print("Left turn speed: ");
-    hm10.println(currentSpeed);
+    turnLeft(currentRightSpeed, currentLeftSpeed);
+    hm10.print("Left turn speed R/L: ");
+    hm10.print(currentRightSpeed);
+    hm10.print(" / ");
+    hm10.println(currentLeftSpeed);
 
-    Serial.print("Left turn speed: ");
-    Serial.println(currentSpeed);
+    Serial.print("Left turn speed R/L: ");
+    Serial.print(currentRightSpeed);
+    Serial.print(" / ");
+    Serial.println(currentLeftSpeed);
   }
 
   else if (command == 'R') {
-    testRightWheel(currentSpeed);
+    testRightWheel(currentRightSpeed);
     hm10.print("Right wheel test speed: ");
-    hm10.println(currentSpeed);
+    hm10.println(currentRightSpeed);
 
     Serial.print("Right wheel test speed: ");
-    Serial.println(currentSpeed);
+    Serial.println(currentRightSpeed);
   }
 
   else if (command == 'L') {
-    testLeftWheel(currentSpeed);
+    testLeftWheel(currentLeftSpeed);
     hm10.print("Left wheel test speed: ");
-    hm10.println(currentSpeed);
+    hm10.println(currentLeftSpeed);
 
     Serial.print("Left wheel test speed: ");
-    Serial.println(currentSpeed);
+    Serial.println(currentLeftSpeed);
   }
 }
 
-int calculateRampSpeed() {
+int calculateRightRampSpeed() {
   unsigned long heldTime = millis() - wheelCommandStartTime;
 
-  if (heldTime >= RAMP_TIME) {
-    return currentMaxWheelSpeed;
+  if (heldTime >= RIGHT_RAMP_TIME) {
+    return currentRightMaxWheelSpeed;
   }
 
   int speedValue = map(
     heldTime,
     0,
-    RAMP_TIME,
-    currentMinWheelSpeed,
-    currentMaxWheelSpeed
+    RIGHT_RAMP_TIME,
+    currentRightMinWheelSpeed,
+    currentRightMaxWheelSpeed
   );
 
-  return constrain(speedValue, currentMinWheelSpeed, currentMaxWheelSpeed);
+  return constrain(speedValue, currentRightMinWheelSpeed, currentRightMaxWheelSpeed);
+}
+
+int calculateLeftRampSpeed() {
+  unsigned long heldTime = millis() - wheelCommandStartTime;
+
+  if (heldTime >= LEFT_RAMP_TIME) {
+    return currentLeftMaxWheelSpeed;
+  }
+
+  int speedValue = map(
+    heldTime,
+    0,
+    LEFT_RAMP_TIME,
+    currentLeftMinWheelSpeed,
+    currentLeftMaxWheelSpeed
+  );
+
+  return constrain(speedValue, currentLeftMinWheelSpeed, currentLeftMaxWheelSpeed);
 }
 
 // ======================================================
@@ -350,29 +414,29 @@ void setLeftMotor(int power, int speedValue) {
 // ======================================================
 
 // A = forward
-void moveForward(int speedValue) {
-  setRightMotor(1, speedValue);
-  setLeftMotor(1, speedValue);
+void moveForward(int rightSpeedValue, int leftSpeedValue) {
+  setRightMotor(1, rightSpeedValue);
+  setLeftMotor(1, leftSpeedValue);
 }
 
 // C = backward
-void moveBackward(int speedValue) {
-  setRightMotor(-1, speedValue);
-  setLeftMotor(-1, speedValue);
+void moveBackward(int rightSpeedValue, int leftSpeedValue) {
+  setRightMotor(-1, rightSpeedValue);
+  setLeftMotor(-1, leftSpeedValue);
 }
 
 // D = turn left
-void turnLeft(int speedValue) {
+void turnLeft(int rightSpeedValue, int leftSpeedValue) {
   // Right wheel forward, left wheel backward
-  setRightMotor(1, speedValue);
-  setLeftMotor(-1, speedValue);
+  setRightMotor(1, rightSpeedValue);
+  setLeftMotor(-1, leftSpeedValue);
 }
 
 // B = turn right
-void turnRight(int speedValue) {
+void turnRight(int rightSpeedValue, int leftSpeedValue) {
   // Right wheel backward, left wheel forward
-  setRightMotor(-1, speedValue);
-  setLeftMotor(1, speedValue);
+  setRightMotor(-1, rightSpeedValue);
+  setLeftMotor(1, leftSpeedValue);
 }
 
 // R = right wheel only test
