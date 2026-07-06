@@ -6,7 +6,7 @@ The robot is controlled through an iPhone BLE controller app using an HM-10 Blue
 
 The first L293D controls the right and left wheel motors. The second L293D controls two lifting motors for the forklift/lifting system.
 
-> **Project Status:** This project is still in progress. HM-10 Bluetooth communication, right/left wheel control, two-motor lifting control, PWM speed control, gear selection, and auto-stop behaviour have been added to the Arduino code. Final physical integration, speed tuning, lifting mechanism testing, and full robot testing are still being developed and tested.
+> **Project Status:** This project is still in progress. HM-10 Bluetooth communication, right/left wheel control, two-motor lifting control, independent right/left wheel speed tuning, separate right/left ramp-time control, gear selection, PWM speed control, and auto-stop behaviour have been added to the Arduino code. Final physical integration, motor balancing, lifting mechanism testing, and full robot testing are still being developed and tested.
 
 ---
 
@@ -411,14 +411,83 @@ Optional testing buttons:
 
 ## Current Speed Settings
 
-Current code uses variable speed values for the wheel motors.
+Current code uses separate speed settings for the right and left wheel motors. This allows the robot to compensate if one wheel reacts slower or faster than the other.
+
+### Right Wheel Speed Settings
 
 ```cpp
-const int GEAR1_MIN_SPEED = 80;
-const int GEAR1_MAX_SPEED = 130;
+const int RIGHT_GEAR1_MIN_SPEED = 70;
+const int RIGHT_GEAR1_MAX_SPEED = 70;
 
-const int GEAR2_MIN_SPEED = 130;
-const int GEAR2_MAX_SPEED = 180;
+const int RIGHT_GEAR2_MIN_SPEED = 200;
+const int RIGHT_GEAR2_MAX_SPEED = 200;
+
+const unsigned long RIGHT_RAMP_TIME = 2000; // ms
+```
+
+### Left Wheel Speed Settings
+
+```cpp
+const int LEFT_GEAR1_MIN_SPEED = 70;
+const int LEFT_GEAR1_MAX_SPEED = 70;
+
+const int LEFT_GEAR2_MIN_SPEED = 200;
+const int LEFT_GEAR2_MAX_SPEED = 200;
+
+const unsigned long LEFT_RAMP_TIME = 2000; // ms
+```
+
+Gear 1 and Gear 2 are selected using Bluetooth commands:
+
+```text
+H → Select Gear 1
+G → Select Gear 2
+```
+
+When Gear 1 is selected, the code uses the Gear 1 values for both wheels:
+
+```cpp
+currentRightMinWheelSpeed = RIGHT_GEAR1_MIN_SPEED;
+currentRightMaxWheelSpeed = RIGHT_GEAR1_MAX_SPEED;
+
+currentLeftMinWheelSpeed = LEFT_GEAR1_MIN_SPEED;
+currentLeftMaxWheelSpeed = LEFT_GEAR1_MAX_SPEED;
+```
+
+When Gear 2 is selected, the code uses the Gear 2 values for both wheels:
+
+```cpp
+currentRightMinWheelSpeed = RIGHT_GEAR2_MIN_SPEED;
+currentRightMaxWheelSpeed = RIGHT_GEAR2_MAX_SPEED;
+
+currentLeftMinWheelSpeed = LEFT_GEAR2_MIN_SPEED;
+currentLeftMaxWheelSpeed = LEFT_GEAR2_MAX_SPEED;
+```
+
+The right and left wheel speeds are calculated separately:
+
+```cpp
+int currentRightSpeed = calculateRightRampSpeed();
+int currentLeftSpeed = calculateLeftRampSpeed();
+```
+
+This means the robot can run the right and left wheels at different speeds if needed.
+
+Example: if the right wheel is slower than the left wheel, increase only the right wheel speed.
+
+```cpp
+const int RIGHT_GEAR1_MIN_SPEED = 85;
+const int RIGHT_GEAR1_MAX_SPEED = 85;
+
+const int LEFT_GEAR1_MIN_SPEED = 70;
+const int LEFT_GEAR1_MAX_SPEED = 70;
+```
+
+If the right wheel reacts more slowly at the start, reduce only the right ramp time.
+
+```cpp
+const unsigned long RIGHT_RAMP_TIME = 500;
+const unsigned long LEFT_RAMP_TIME = 2000;
 ```
 
 The lifting motors use a fixed speed value:
@@ -427,17 +496,7 @@ The lifting motors use a fixed speed value:
 const int LIFT_SPEED = 70;
 ```
 
-The wheel speed range can be adjusted later. Example:
-
-```cpp
-const int GEAR1_MIN_SPEED = 200;
-const int GEAR1_MAX_SPEED = 200;
-
-const int GEAR2_MIN_SPEED = 200;
-const int GEAR2_MAX_SPEED = 200;
-```
-
-If the minimum and maximum values are the same, the wheel motors will run at a fixed speed instead of ramping up.
+The lifting motors do not use ramped acceleration. They run at the fixed speed of `70`.
 
 The L293D Enable pins must be connected to PWM pins for speed control to work.
 
@@ -450,16 +509,16 @@ Lift motor 1 speed → Arduino D10
 Lift motor 2 speed → Arduino D11
 ```
 
-The wheel motors currently use ramped acceleration:
+When a wheel command starts, each wheel calculates its own ramped speed. If a different wheel command is received, the ramp restarts for the new command.
 
-```cpp
-const unsigned long RAMP_TIME = 3000; // ms
+The Serial Monitor prints both right and left wheel speeds, for example:
+
+```text
+Forward speed R/L: 70 / 70
+Right turn speed R/L: 70 / 70
+Backward speed R/L: 70 / 70
+Left turn speed R/L: 70 / 70
 ```
-
-When a wheel command starts, the speed begins at the selected gear's minimum speed and increases toward the maximum speed over the ramp time. If a different wheel command is received, the ramp restarts for the new command.
-
-The lifting motors do not use ramped acceleration. They run at the fixed speed of `70`.
-
 ---
 
 ## Auto Stop Behaviour
@@ -560,13 +619,41 @@ Lift motor 2: L293D #2 pin 9 → Arduino D11
 
 ### Motor accelerates too slowly or too quickly
 
-Adjust the ramp time:
+The right and left wheel motors now have separate ramp-time settings.
 
 ```cpp
-const unsigned long RAMP_TIME = 3000;
+const unsigned long RIGHT_RAMP_TIME = 2000;
+const unsigned long LEFT_RAMP_TIME = 2000;
 ```
 
-Reduce the value for faster wheel acceleration. Increase the value for slower wheel acceleration.
+Reduce the value for faster acceleration. Increase the value for slower acceleration.
+
+Example: if the right wheel reacts more slowly than the left wheel, reduce the right ramp time.
+
+```cpp
+const unsigned long RIGHT_RAMP_TIME = 500;
+const unsigned long LEFT_RAMP_TIME = 2000;
+```
+
+Example: if the right wheel is still slower even after ramp-time adjustment, increase the right wheel speed.
+
+```cpp
+const int RIGHT_GEAR1_MIN_SPEED = 85;
+const int RIGHT_GEAR1_MAX_SPEED = 85;
+
+const int LEFT_GEAR1_MIN_SPEED = 70;
+const int LEFT_GEAR1_MAX_SPEED = 70;
+```
+
+For Gear 2, adjust these values:
+
+```cpp
+const int RIGHT_GEAR2_MIN_SPEED = 215;
+const int RIGHT_GEAR2_MAX_SPEED = 215;
+
+const int LEFT_GEAR2_MIN_SPEED = 200;
+const int LEFT_GEAR2_MAX_SPEED = 200;
+```
 
 ### Lift motors are too fast or too slow
 
