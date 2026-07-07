@@ -12,8 +12,8 @@ SoftwareSerial hm10(2, 3);
 // RIGHT WHEEL SPEED SETTINGS
 // ======================================================
 
-const int RIGHT_GEAR1_MIN_SPEED = 70;
-const int RIGHT_GEAR1_MAX_SPEED = 70;
+const int RIGHT_GEAR1_MIN_SPEED = 80;
+const int RIGHT_GEAR1_MAX_SPEED = 80;
 
 const int RIGHT_GEAR2_MIN_SPEED = 90;
 const int RIGHT_GEAR2_MAX_SPEED = 110;
@@ -25,8 +25,8 @@ const unsigned long RIGHT_RAMP_TIME = 2000; // ms
 // LEFT WHEEL SPEED SETTINGS
 // ======================================================
 
-const int LEFT_GEAR1_MIN_SPEED = 70;
-const int LEFT_GEAR1_MAX_SPEED = 70;
+const int LEFT_GEAR1_MIN_SPEED = 80;
+const int LEFT_GEAR1_MAX_SPEED = 80;
 
 const int LEFT_GEAR2_MIN_SPEED = 90;
 const int LEFT_GEAR2_MAX_SPEED = 110;
@@ -50,14 +50,14 @@ const int LIFT_DOWN_SPEED = 130;
 // Gear 1 and Gear 2 use separate wheel timeouts so each gear can be tuned independently.
 // If one wheel button press keeps the robot moving too long, reduce the relevant value.
 // If the app sends repeated commands while held, keep this slightly longer than the app repeat interval.
-const unsigned long GEAR1_COMMAND_TIMEOUT = 200; // ms
+const unsigned long GEAR1_COMMAND_TIMEOUT = 150; // ms
 const unsigned long GEAR2_COMMAND_TIMEOUT = 330; // ms
 
 unsigned long currentWheelCommandTimeout = GEAR1_COMMAND_TIMEOUT;
 
 // Lift command timeout.
 // This is separate from wheel timeout so lifting can be tuned independently.
-const unsigned long LIFT_COMMAND_TIMEOUT = 150; // ms
+const unsigned long LIFT_COMMAND_TIMEOUT = 80; // ms
 
 // ======================================================
 // MOTOR PINS
