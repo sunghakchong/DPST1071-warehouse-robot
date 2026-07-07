@@ -6,7 +6,7 @@ The robot is controlled through an iPhone BLE controller app using an HM-10 Blue
 
 The first L293D controls the right and left wheel motors. The second L293D controls two lifting motors for the forklift/lifting system.
 
-> **Project Status:** This project is still in progress. HM-10 Bluetooth communication, right/left wheel control, two-motor lifting control, independent right/left wheel speed tuning, separate right/left ramp-time control, gear selection, PWM speed control, and auto-stop behaviour have been added to the Arduino code. Final physical integration, motor balancing, lifting mechanism testing, and full robot testing are still being developed and tested.
+> **Project Status:** The Arduino control system has been tested with HM-10 Bluetooth communication, right/left wheel control, two-motor lifting control, independent right/left wheel speed tuning, separate right/left ramp-time control, Gear 1 and Gear 2 control, separate wheel timeout settings for each gear, separate lift timeout control, separate lift-up and lift-down speed control, PWM speed control, and auto-stop behaviour. Final tuning values may still be adjusted during physical testing.
 
 ---
 
@@ -195,7 +195,7 @@ L293D #1 pin 16 → Arduino 5V
 
 The second L293D controls two lifting motors for the forklift/lifting system.
 
-The lifting system uses two motors so that both sides of the lifting mechanism can move together. Both lifting motors run at a fixed PWM speed of `70`.
+The lifting system uses two motors so that both sides of the lifting mechanism can move together. The lifting motors use separate PWM speed values for lifting up and lifting down so that upward torque and downward precision can be tuned independently.
 
 ### Second L293D — Lifting Motors 1 and 2
 
@@ -411,7 +411,7 @@ Optional testing buttons:
 
 ## Current Speed Settings
 
-Current code uses separate speed settings for the right and left wheel motors. This allows the robot to compensate if one wheel reacts slower or faster than the other.
+The current code uses separate speed settings for the right and left wheel motors. This allows the robot to compensate if one wheel reacts slower or faster than the other.
 
 ### Right Wheel Speed Settings
 
@@ -419,8 +419,8 @@ Current code uses separate speed settings for the right and left wheel motors. T
 const int RIGHT_GEAR1_MIN_SPEED = 70;
 const int RIGHT_GEAR1_MAX_SPEED = 70;
 
-const int RIGHT_GEAR2_MIN_SPEED = 200;
-const int RIGHT_GEAR2_MAX_SPEED = 200;
+const int RIGHT_GEAR2_MIN_SPEED = 90;
+const int RIGHT_GEAR2_MAX_SPEED = 110;
 
 const unsigned long RIGHT_RAMP_TIME = 2000; // ms
 ```
@@ -431,8 +431,8 @@ const unsigned long RIGHT_RAMP_TIME = 2000; // ms
 const int LEFT_GEAR1_MIN_SPEED = 70;
 const int LEFT_GEAR1_MAX_SPEED = 70;
 
-const int LEFT_GEAR2_MIN_SPEED = 200;
-const int LEFT_GEAR2_MAX_SPEED = 200;
+const int LEFT_GEAR2_MIN_SPEED = 90;
+const int LEFT_GEAR2_MAX_SPEED = 110;
 
 const unsigned long LEFT_RAMP_TIME = 2000; // ms
 ```
@@ -444,7 +444,7 @@ H → Select Gear 1
 G → Select Gear 2
 ```
 
-When Gear 1 is selected, the code uses the Gear 1 values for both wheels:
+When Gear 1 is selected, the code uses the Gear 1 speed values and the Gear 1 wheel timeout:
 
 ```cpp
 currentRightMinWheelSpeed = RIGHT_GEAR1_MIN_SPEED;
@@ -452,9 +452,11 @@ currentRightMaxWheelSpeed = RIGHT_GEAR1_MAX_SPEED;
 
 currentLeftMinWheelSpeed = LEFT_GEAR1_MIN_SPEED;
 currentLeftMaxWheelSpeed = LEFT_GEAR1_MAX_SPEED;
+
+currentWheelCommandTimeout = GEAR1_COMMAND_TIMEOUT;
 ```
 
-When Gear 2 is selected, the code uses the Gear 2 values for both wheels:
+When Gear 2 is selected, the code uses the Gear 2 speed values and the Gear 2 wheel timeout:
 
 ```cpp
 currentRightMinWheelSpeed = RIGHT_GEAR2_MIN_SPEED;
@@ -462,6 +464,8 @@ currentRightMaxWheelSpeed = RIGHT_GEAR2_MAX_SPEED;
 
 currentLeftMinWheelSpeed = LEFT_GEAR2_MIN_SPEED;
 currentLeftMaxWheelSpeed = LEFT_GEAR2_MAX_SPEED;
+
+currentWheelCommandTimeout = GEAR2_COMMAND_TIMEOUT;
 ```
 
 The right and left wheel speeds are calculated separately:
@@ -471,32 +475,12 @@ int currentRightSpeed = calculateRightRampSpeed();
 int currentLeftSpeed = calculateLeftRampSpeed();
 ```
 
-This means the robot can run the right and left wheels at different speeds if needed.
-
-Example: if the right wheel is slower than the left wheel, increase only the right wheel speed.
+The lifting motors use separate speed values for lifting up and lifting down:
 
 ```cpp
-const int RIGHT_GEAR1_MIN_SPEED = 85;
-const int RIGHT_GEAR1_MAX_SPEED = 85;
-
-const int LEFT_GEAR1_MIN_SPEED = 70;
-const int LEFT_GEAR1_MAX_SPEED = 70;
+const int LIFT_UP_SPEED = 50;
+const int LIFT_DOWN_SPEED = 130;
 ```
-
-If the right wheel reacts more slowly at the start, reduce only the right ramp time.
-
-```cpp
-const unsigned long RIGHT_RAMP_TIME = 500;
-const unsigned long LEFT_RAMP_TIME = 2000;
-```
-
-The lifting motors use a fixed speed value:
-
-```cpp
-const int LIFT_SPEED = 70;
-```
-
-The lifting motors do not use ramped acceleration. They run at the fixed speed of `70`.
 
 The L293D Enable pins must be connected to PWM pins for speed control to work.
 
@@ -525,10 +509,23 @@ Left turn speed R/L: 70 / 70
 
 The robot automatically stops the wheels or lifting motors if no matching command is received within the timeout period.
 
-Current setting:
+The current code uses separate timeout settings for:
+
+```text
+Gear 1 wheel movement
+Gear 2 wheel movement
+Lifting movement
+```
+
+Current timeout settings:
 
 ```cpp
-const unsigned long COMMAND_TIMEOUT = 200;
+const unsigned long GEAR1_COMMAND_TIMEOUT = 200; // ms
+const unsigned long GEAR2_COMMAND_TIMEOUT = 330; // ms
+
+unsigned long currentWheelCommandTimeout = GEAR1_COMMAND_TIMEOUT;
+
+const unsigned long LIFT_COMMAND_TIMEOUT = 150; // ms
 ```
 
 The code tracks wheel and lifting commands separately using:
@@ -541,32 +538,42 @@ bool wheelMoving = false;
 bool liftMoving = false;
 ```
 
-This means the wheels and lifting motors can auto-stop independently.
-
-If the robot keeps moving for too long after one button press, reduce this value.
-
-Example:
+Wheel auto-stop uses the currently selected gear timeout:
 
 ```cpp
-const unsigned long COMMAND_TIMEOUT = 100;
+if (wheelMoving && millis() - lastWheelCommandTime > currentWheelCommandTimeout) {
+  stopWheels();
+  wheelMoving = false;
+  currentWheelCommand = '\0';
+}
 ```
 
-If the robot stops too quickly while holding a button, increase this value.
-
-Example:
+Lift auto-stop uses the lift timeout:
 
 ```cpp
-const unsigned long COMMAND_TIMEOUT = 300;
+if (liftMoving && millis() - lastLiftCommandTime > LIFT_COMMAND_TIMEOUT) {
+  stopLift();
+  liftMoving = false;
+}
 ```
 
-The BLE controller app may also have a long-press or repeat-send setting. For smooth control, enable repeated sending while a button is held if the app supports it.
+This means Gear 1, Gear 2, and lifting can be tuned independently.
+
+Recommended tuning logic:
+
+```text
+Shorter timeout → stops faster after button release, better precision
+Longer timeout  → smoother movement while holding the button, less command drop-out
+```
 
 Recommended app settings:
 
 ```text
 Long Press Delay: 0.10 seconds
 Repeat interval: 0.10 to 0.20 seconds
-COMMAND_TIMEOUT: 200 to 300 ms
+Gear 1 timeout: around 200 ms
+Gear 2 timeout: around 330 ms
+Lift timeout: around 150 ms
 ```
 
 ---
@@ -592,15 +599,15 @@ Recommended test order:
 3. Test right wheel only using `R`.
 4. Test left wheel only using `L`.
 5. Test Gear 1 using `H`.
-6. Test Gear 2 using `G`.
-7. Test forward using `A`.
-8. Test backward using `C`.
-9. Test right turn using `B`.
-10. Test left turn using `D`.
-11. Test lift up using `E`.
-12. Test lift down using `F`.
-13. Test stop using `S`.
-14. Test auto-stop behaviour by sending a movement or lift command once and checking that the motors stop after the timeout.
+6. Test Gear 1 forward, backward, left turn, and right turn.
+7. Test Gear 2 using `G`.
+8. Test Gear 2 forward, backward, left turn, and right turn.
+9. Test lift up using `E`.
+10. Test lift down using `F`.
+11. Test stop using `S`.
+12. Test Gear 1 wheel auto-stop.
+13. Test Gear 2 wheel auto-stop.
+14. Test lift auto-stop.
 
 ---
 
@@ -657,13 +664,14 @@ const int LEFT_GEAR2_MAX_SPEED = 200;
 
 ### Lift motors are too fast or too slow
 
-Adjust the fixed lift speed:
+Adjust the lift-up and lift-down speeds separately:
 
 ```cpp
-const int LIFT_SPEED = 70;
+const int LIFT_UP_SPEED = 50;
+const int LIFT_DOWN_SPEED = 130;
 ```
 
-Increase the value for faster lifting. Reduce the value for slower lifting.
+Increase `LIFT_UP_SPEED` if the robot cannot lift the load. Reduce `LIFT_DOWN_SPEED` if the lift comes down too quickly or causes Bluetooth/power instability.
 
 ### Motor does not move
 
@@ -691,13 +699,15 @@ BLE app sends ASCII characters
 
 ### Robot stops too quickly while holding a button
 
-Check whether the BLE app repeatedly sends the command while the button is held. If it does not, the Arduino will stop the motor after `COMMAND_TIMEOUT`.
+Check whether the BLE app repeatedly sends the command while the button is held. If it does not, the Arduino will stop the motor after the relevant timeout.
 
 Possible fixes:
 
 ```text
 Enable repeat-send or long-press repeat in the app
-Increase COMMAND_TIMEOUT to 300 ms
+Increase GEAR1_COMMAND_TIMEOUT if Gear 1 stops too quickly
+Increase GEAR2_COMMAND_TIMEOUT if Gear 2 stops too quickly
+Increase LIFT_COMMAND_TIMEOUT if the lift stops too quickly
 Check that the app sends plain ASCII characters such as A, B, C, D, E, F, G, H, S, R, L
 ```
 
@@ -750,7 +760,8 @@ Alternatively, reverse the direction logic in the `setLiftMotor1()` or `setLiftM
 - Second L293D assigned to two lifting motors.
 - Gear 1 and Gear 2 speed ranges added for wheel motors.
 - Ramped wheel acceleration added.
-- Fixed lift speed set to 70.
-- Auto-stop behaviour added for both wheel and lift commands.
-- PWM speed control is still being tuned.
-- Final wiring and physical robot testing are not yet complete.
+- Separate Gear 1 and Gear 2 wheel timeout settings added.
+- Separate lift timeout setting added.
+- Separate lift-up and lift-down speed settings added.
+- PWM speed control tested and tuned during physical testing.
+- Final wiring and movement/lifting tests completed with the current code version.
