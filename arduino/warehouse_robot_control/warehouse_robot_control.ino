@@ -15,8 +15,8 @@ SoftwareSerial hm10(2, 3);
 const int RIGHT_GEAR1_MIN_SPEED = 70;
 const int RIGHT_GEAR1_MAX_SPEED = 70;
 
-const int RIGHT_GEAR2_MIN_SPEED = 150;
-const int RIGHT_GEAR2_MAX_SPEED = 200;
+const int RIGHT_GEAR2_MIN_SPEED = 90;
+const int RIGHT_GEAR2_MAX_SPEED = 110;
 
 // Time for the right wheel to reach maximum speed
 const unsigned long RIGHT_RAMP_TIME = 2000; // ms
@@ -25,14 +25,14 @@ const unsigned long RIGHT_RAMP_TIME = 2000; // ms
 // LEFT WHEEL SPEED SETTINGS
 // ======================================================
 
-const int LEFT_GEAR1_MIN_SPEED = 90;
-const int LEFT_GEAR1_MAX_SPEED = 90;
+const int LEFT_GEAR1_MIN_SPEED = 70;
+const int LEFT_GEAR1_MAX_SPEED = 70;
 
-const int LEFT_GEAR2_MIN_SPEED = 150;
-const int LEFT_GEAR2_MAX_SPEED = 200;
+const int LEFT_GEAR2_MIN_SPEED = 90;
+const int LEFT_GEAR2_MAX_SPEED = 110;
 
 // Time for the left wheel to reach maximum speed
-const unsigned long LEFT_RAMP_TIME = 500; // ms
+const unsigned long LEFT_RAMP_TIME = 2000; // ms
 
 int currentRightMinWheelSpeed = RIGHT_GEAR1_MIN_SPEED;
 int currentRightMaxWheelSpeed = RIGHT_GEAR1_MAX_SPEED;
@@ -41,14 +41,23 @@ int currentLeftMinWheelSpeed = LEFT_GEAR1_MIN_SPEED;
 int currentLeftMaxWheelSpeed = LEFT_GEAR1_MAX_SPEED;
 
 // Two lifting motors speed using second L293D
-const int LIFT_SPEED = 70;
+// Lift up and lift down use separate speed values for better control.
+const int LIFT_UP_SPEED = 50;
+const int LIFT_DOWN_SPEED = 130;
 
 
-// If one button press keeps the motor moving too long,
-// reduce this value.
-// If the app sends repeated commands while held, keep this
-// slightly longer than the app repeat interval.
-const unsigned long COMMAND_TIMEOUT = 200; // ms
+// Wheel command timeout settings.
+// Gear 1 and Gear 2 use separate wheel timeouts so each gear can be tuned independently.
+// If one wheel button press keeps the robot moving too long, reduce the relevant value.
+// If the app sends repeated commands while held, keep this slightly longer than the app repeat interval.
+const unsigned long GEAR1_COMMAND_TIMEOUT = 200; // ms
+const unsigned long GEAR2_COMMAND_TIMEOUT = 330; // ms
+
+unsigned long currentWheelCommandTimeout = GEAR1_COMMAND_TIMEOUT;
+
+// Lift command timeout.
+// This is separate from wheel timeout so lifting can be tuned independently.
+const unsigned long LIFT_COMMAND_TIMEOUT = 150; // ms
 
 // ======================================================
 // MOTOR PINS
@@ -197,7 +206,7 @@ void loop() {
     }
   }
 
-  if (wheelMoving && millis() - lastWheelCommandTime > COMMAND_TIMEOUT) {
+  if (wheelMoving && millis() - lastWheelCommandTime > currentWheelCommandTimeout) {
     stopWheels();
     wheelMoving = false;
     currentWheelCommand = '\0';
@@ -205,7 +214,7 @@ void loop() {
     Serial.println("Wheels auto stop");
   }
 
-  if (liftMoving && millis() - lastLiftCommandTime > COMMAND_TIMEOUT) {
+  if (liftMoving && millis() - lastLiftCommandTime > LIFT_COMMAND_TIMEOUT) {
     stopLift();
     liftMoving = false;
 
@@ -224,6 +233,7 @@ void setGear1() {
   currentLeftMinWheelSpeed = LEFT_GEAR1_MIN_SPEED;
   currentLeftMaxWheelSpeed = LEFT_GEAR1_MAX_SPEED;
 
+  currentWheelCommandTimeout = GEAR1_COMMAND_TIMEOUT;
   currentWheelCommand = '\0';
 }
 
@@ -234,6 +244,7 @@ void setGear2() {
   currentLeftMinWheelSpeed = LEFT_GEAR2_MIN_SPEED;
   currentLeftMaxWheelSpeed = LEFT_GEAR2_MAX_SPEED;
 
+  currentWheelCommandTimeout = GEAR2_COMMAND_TIMEOUT;
   currentWheelCommand = '\0';
 }
 
@@ -510,14 +521,14 @@ void setLiftMotor2(int power, int speedValue) {
 
 // E = lift up
 void liftUp() {
-  setLiftMotor1(1, LIFT_SPEED);
-  setLiftMotor2(1, LIFT_SPEED);
+  setLiftMotor1(1, LIFT_UP_SPEED);
+  setLiftMotor2(1, LIFT_UP_SPEED);
 }
 
 // F = lift down
 void liftDown() {
-  setLiftMotor1(-1, LIFT_SPEED);
-  setLiftMotor2(-1, LIFT_SPEED);
+  setLiftMotor1(-1, LIFT_DOWN_SPEED);
+  setLiftMotor2(-1, LIFT_DOWN_SPEED);
 }
 
 void stopLift() {
