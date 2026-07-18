@@ -40,7 +40,7 @@ int currentRightMaxWheelSpeed = RIGHT_GEAR1_MAX_SPEED;
 int currentLeftMinWheelSpeed = LEFT_GEAR1_MIN_SPEED;
 int currentLeftMaxWheelSpeed = LEFT_GEAR1_MAX_SPEED;
 
-// Two lifting motors speed using second L293D
+// Two lifting motors speed using the second L298N module
 // Lift up and lift down use separate speed values for better control.
 const int LIFT_UP_SPEED = 50;
 const int LIFT_DOWN_SPEED = 130;
@@ -64,32 +64,32 @@ const unsigned long LIFT_COMMAND_TIMEOUT = 80; // ms
 // ======================================================
 
 // ======================================================
-// First L293D: right and left wheel motors
+// First L298N module: right and left wheel motors
 // ======================================================
 
 // Right wheel motor
-const int RIGHT_EN = 5;   // First L293D pin 1, PWM speed control
-const int RIGHT_IN1 = 6;  // First L293D pin 2
-const int RIGHT_IN2 = 7;  // First L293D pin 7
+const int RIGHT_EN = 5;   // L298N #1 ENA, PWM speed control
+const int RIGHT_IN1 = 6;  // L298N #1 IN1
+const int RIGHT_IN2 = 7;  // L298N #1 IN2
 
 // Left wheel motor
-const int LEFT_EN = 9;    // First L293D pin 9, PWM speed control
-const int LEFT_IN1 = 8;   // First L293D pin 15
-const int LEFT_IN2 = 12;  // First L293D pin 10
+const int LEFT_EN = 9;    // L298N #1 ENB, PWM speed control
+const int LEFT_IN1 = 8;   // L298N #1 IN3
+const int LEFT_IN2 = 12;  // L298N #1 IN4
 
 // ======================================================
-// Second L293D: two lifting motors
+// Second L298N module: two lifting motors
 // ======================================================
 
 // Lift motor 1
-const int LIFT1_EN = 10;   // Second L293D pin 1, PWM speed control
-const int LIFT1_IN1 = 4;   // Second L293D pin 2
-const int LIFT1_IN2 = 13;  // Second L293D pin 7
+const int LIFT1_EN = 10;   // L298N #2 ENA, PWM speed control
+const int LIFT1_IN1 = 4;   // L298N #2 IN1
+const int LIFT1_IN2 = A2;  // L298N #2 IN2 (moved from D13)
 
 // Lift motor 2
-const int LIFT2_EN = 11;   // Second L293D pin 9, PWM speed control
-const int LIFT2_IN1 = A0;  // Second L293D pin 15
-const int LIFT2_IN2 = A1;  // Second L293D pin 10
+const int LIFT2_EN = 11;   // L298N #2 ENB, PWM speed control
+const int LIFT2_IN1 = A0;  // L298N #2 IN3
+const int LIFT2_IN2 = A1;  // L298N #2 IN4
 
 // ======================================================
 // STATE VARIABLES
