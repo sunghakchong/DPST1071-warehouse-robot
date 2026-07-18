@@ -12,11 +12,11 @@ SoftwareSerial hm10(2, 3);
 // RIGHT WHEEL SPEED SETTINGS
 // ======================================================
 
-const int RIGHT_GEAR1_MIN_SPEED = 80;
-const int RIGHT_GEAR1_MAX_SPEED = 80;
+const int RIGHT_GEAR1_MIN_SPEED = 90;
+const int RIGHT_GEAR1_MAX_SPEED = 90;
 
-const int RIGHT_GEAR2_MIN_SPEED = 90;
-const int RIGHT_GEAR2_MAX_SPEED = 110;
+const int RIGHT_GEAR2_MIN_SPEED = 100;
+const int RIGHT_GEAR2_MAX_SPEED = 120;
 
 // Time for the right wheel to reach maximum speed
 const unsigned long RIGHT_RAMP_TIME = 2000; // ms
