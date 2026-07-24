@@ -1,18 +1,19 @@
 # Warehouse Robot Arduino Control
 
-This repository contains the Arduino control code and wiring documentation for our DPST1071 warehouse robot project.
+This repository contains the Arduino control code and wiring documentation for the DPST1071 warehouse robot project.
 
-The robot is controlled through an iPhone BLE controller app using an HM-10 Bluetooth module. The Arduino UNO receives single-character commands through Bluetooth and controls four DC motors using two L293D motor driver ICs.
+The robot is controlled from an iPhone BLE controller app through an HM-10 Bluetooth module. An Arduino UNO receives single-character commands and controls four TT DC motors through two L298N dual H-bridge motor driver modules.
 
-The first L293D controls the right and left wheel motors. The second L293D controls two lifting motors for the forklift/lifting system.
+- L298N #1 controls the right and left wheel motors.
+- L298N #2 controls the two lifting motors.
+- Wheel speeds are calibrated independently to compensate for the weaker right-side drive channel.
+- Lift motor 1 `IN2` is connected to Arduino `A2` instead of `D13`.
 
-> **Project Status:** The Arduino control system has been tested with HM-10 Bluetooth communication, right/left wheel control, two-motor lifting control, independent right/left wheel speed tuning, separate right/left ramp-time control, Gear 1 and Gear 2 control, separate wheel timeout settings for each gear, separate lift timeout control, separate lift-up and lift-down speed control, PWM speed control, and auto-stop behaviour. Final tuning values may still be adjusted during physical testing.
+> **Current status:** The code includes BLE control, two driving gears, independent right/left speed calibration, acceleration ramps, separate lift-up/down speeds, and automatic wheel/lift stopping. Final speed values can still be adjusted after physical testing.
 
 ---
 
 ## System Overview
-
-The overall control structure is:
 
 ```text
 iPhone BLE Controller App
@@ -21,12 +22,11 @@ HM-10 Bluetooth Module
         ↓
 Arduino UNO
         ↓
-2 × L293D Motor Driver ICs
-        ↓
-4 × DC Motors
+L298N #1 ── Right and left wheel motors
+L298N #2 ── Lift motors 1 and 2
 ```
 
-The HM-10 Bluetooth module does not control the motors directly. It only sends single-character commands from the phone to the Arduino. The Arduino reads these commands using `SoftwareSerial`, selects the correct movement or lifting function, and sends direction and PWM speed signals to the L293D motor driver ICs. The L293D motor drivers then control the direction and power of each DC motor.
+The HM-10 only sends commands. The Arduino interprets each command and sends PWM speed and digital direction signals to the L298N modules. The L298N modules supply the motor current and reverse motor polarity when the direction changes.
 
 ---
 
@@ -34,734 +34,402 @@ The HM-10 Bluetooth module does not control the motors directly. It only sends s
 
 - Arduino UNO
 - HM-10 BLE Bluetooth module
-- 2 × L293D Dual Full Bridge Motor Driver IC
-- 4 × DC motors
+- 2 × Jaycar/Duinotech XC4492 L298N dual motor driver modules
+- 4 × TT DC geared motors
   - Right wheel motor
   - Left wheel motor
   - Lift motor 1
   - Lift motor 2
-- External motor battery
+- Existing external motor power supply
 - Breadboard
 - Jumper wires
-- 1kΩ and 2kΩ resistors for HM-10 RXD voltage divider
+- 1 kΩ and 2 kΩ resistors for the HM-10 RX voltage divider
 
 ---
 
-## Arduino, Bluetooth, and Motor Driver Connection Overview
+## Important L298N Jumper Configuration
 
-### 1. Arduino ↔ HM-10 Bluetooth Module
+For both L298N modules:
 
-| HM-10 Pin | Arduino Pin | Purpose |
+```text
+ENA jumper  → Remove
+ENB jumper  → Remove
+5VEN jumper → Remove
+```
+
+The `ENA` and `ENB` jumpers must be removed because speed is controlled by Arduino PWM pins.
+
+The `5VEN` jumper must be removed when the L298N logic `5V` terminal is supplied from the Arduino `5V` pin.
+
+Make sure both driver boards use the same jumper configuration. If only one enable jumper remains installed, one motor channel may run at full power while the other channel uses the lower PWM value.
+
+---
+
+## HM-10 Bluetooth Wiring
+
+| HM-10 pin | Arduino connection | Purpose |
 |---|---|---|
-| VCC | 5V or 3.3V | Bluetooth module power |
+| VCC | Existing HM-10 power connection | Module power |
 | GND | GND | Common ground |
-| TXD | D2 | HM-10 sends data to Arduino |
-| RXD | D3 | Arduino sends data to HM-10 |
+| TXD | D2 | HM-10 transmits to Arduino RX |
+| RXD | D3 through voltage divider | Arduino transmits to HM-10 RX |
 
-The Arduino code uses:
+The code uses:
 
 ```cpp
 SoftwareSerial hm10(2, 3);
 ```
 
-This means:
+Therefore:
 
 ```text
-Arduino D2 = RX ← HM-10 TXD
-Arduino D3 = TX → HM-10 RXD
+HM-10 TXD → Arduino D2
+Arduino D3 → voltage divider → HM-10 RXD
 ```
-
-Because Arduino UNO uses 5V logic and HM-10 usually uses 3.3V logic, the HM-10 RXD pin should use a voltage divider.
 
 Recommended voltage divider:
 
 ```text
-Arduino D3 ── 1kΩ ──┬── HM-10 RXD
-                    |
-                   2kΩ
-                    |
-                   GND
+Arduino D3 ── 1 kΩ ──┬── HM-10 RXD
+                     |
+                    2 kΩ
+                     |
+                    GND
 ```
 
 ---
 
-## 2. Arduino ↔ L293D Motor Driver ICs
+## L298N Module Connections
 
-The L293D is used because Arduino pins cannot safely power DC motors directly. The Arduino only sends control signals, while the L293D handles the motor current and direction control.
-
-Each L293D can control two DC motors. This project uses two L293D ICs:
+Each L298N module controls two motors:
 
 ```text
-First L293D  → Right wheel motor + Left wheel motor
-Second L293D → Lift motor 1 + Lift motor 2
+Channel A: ENA + IN1 + IN2 → Motor A
+Channel B: ENB + IN3 + IN4 → Motor B
 ```
 
-### L293D Pin Numbering
+The `ENA` and `ENB` pins control speed using PWM. The `IN1–IN4` pins control direction.
 
-When the notch or dot on the L293D is facing upward, the pin numbering is:
+### L298N #1 — Wheel Motors
+
+| L298N #1 connection | Arduino/motor connection | Purpose |
+|---|---|---|
+| ENA | D5 | Right motor PWM speed |
+| IN1 | D6 | Right motor direction 1 |
+| IN2 | D7 | Right motor direction 2 |
+| Motor A | Right wheel motor | Right motor output |
+| IN3 | D8 | Left motor direction 1 |
+| IN4 | D12 | Left motor direction 2 |
+| ENB | D9 | Left motor PWM speed |
+| Motor B | Left wheel motor | Left motor output |
+| 5V | Arduino 5V | Driver logic power |
+| GND | Common GND | Shared ground |
+| VMS | Existing motor power positive | Motor power input |
+
+Full signal wiring:
 
 ```text
-        L293D
-     ┌─────────┐
-  1  │●        │ 16
-  2  │         │ 15
-  3  │         │ 14
-  4  │         │ 13
-  5  │         │ 12
-  6  │         │ 11
-  7  │         │ 10
-  8  │         │ 9
-     └─────────┘
+Arduino D5  → L298N #1 ENA
+Arduino D6  → L298N #1 IN1
+Arduino D7  → L298N #1 IN2
+Arduino D8  → L298N #1 IN3
+Arduino D12 → L298N #1 IN4
+Arduino D9  → L298N #1 ENB
+
+L298N #1 Motor A → Right wheel motor
+L298N #1 Motor B → Left wheel motor
 ```
+
+### L298N #2 — Lifting Motors
+
+| L298N #2 connection | Arduino/motor connection | Purpose |
+|---|---|---|
+| ENA | D10 | Lift motor 1 PWM speed |
+| IN1 | D4 | Lift motor 1 direction 1 |
+| IN2 | **A2** | Lift motor 1 direction 2 |
+| Motor A | Lift motor 1 | Lift motor 1 output |
+| IN3 | A0 | Lift motor 2 direction 1 |
+| IN4 | A1 | Lift motor 2 direction 2 |
+| ENB | D11 | Lift motor 2 PWM speed |
+| Motor B | Lift motor 2 | Lift motor 2 output |
+| 5V | Arduino 5V | Driver logic power |
+| GND | Common GND | Shared ground |
+| VMS | Existing motor power positive | Motor power input |
+
+Full signal wiring:
+
+```text
+Arduino D10 → L298N #2 ENA
+Arduino D4  → L298N #2 IN1
+Arduino A2  → L298N #2 IN2
+Arduino A0  → L298N #2 IN3
+Arduino A1  → L298N #2 IN4
+Arduino D11 → L298N #2 ENB
+
+L298N #2 Motor A → Lift motor 1
+L298N #2 Motor B → Lift motor 2
+```
+
+`A0`, `A1`, and `A2` are used as digital output pins. The code still controls them with `pinMode(..., OUTPUT)` and `digitalWrite()`.
 
 ---
 
-## 3. First L293D: Right and Left Wheel Motors
+## Power and Ground Connections
 
-The first L293D controls the right and left wheel motors.
-
-### First L293D — Right and Left Wheel Motors
-
-| First L293D Pin | Arduino / Motor Connection | Purpose |
-|---:|---|---|
-| Pin 1 | Arduino D5 | Right motor enable / speed |
-| Pin 2 | Arduino D6 | Right motor IN1 |
-| Pin 3 | Right motor wire 1 | Right motor output |
-| Pin 4 | GND | Ground |
-| Pin 5 | GND | Ground |
-| Pin 6 | Right motor wire 2 | Right motor output |
-| Pin 7 | Arduino D7 | Right motor IN2 |
-| Pin 8 | VIN / external battery + | Motor power |
-| Pin 9 | Arduino D9 | Left motor enable / speed |
-| Pin 10 | Arduino D12 | Left motor IN2 |
-| Pin 11 | Left motor wire 1 | Left motor output |
-| Pin 12 | GND | Ground |
-| Pin 13 | GND | Ground |
-| Pin 14 | Left motor wire 2 | Left motor output |
-| Pin 15 | Arduino D8 | Left motor IN1 |
-| Pin 16 | Arduino 5V | Logic power |
-
-### Right Wheel Motor
-
-| L293D Pin | Arduino / Motor Connection | Purpose |
-|---:|---|---|
-| Pin 1 | Arduino D5 | Enable / PWM speed control |
-| Pin 2 | Arduino D6 | Direction control IN1 |
-| Pin 3 | Right motor wire 1 | Motor output |
-| Pin 4 | GND | Ground |
-| Pin 5 | GND | Ground |
-| Pin 6 | Right motor wire 2 | Motor output |
-| Pin 7 | Arduino D7 | Direction control IN2 |
-| Pin 8 | Arduino VIN / external motor battery + | Motor power |
-
-### Left Wheel Motor
-
-| L293D Pin | Arduino / Motor Connection | Purpose |
-|---:|---|---|
-| Pin 9 | Arduino D9 | Enable / PWM speed control |
-| Pin 10 | Arduino D12 | Direction control IN2 |
-| Pin 11 | Left motor wire 1 | Motor output |
-| Pin 12 | GND | Ground |
-| Pin 13 | GND | Ground |
-| Pin 14 | Left motor wire 2 | Motor output |
-| Pin 15 | Arduino D8 | Direction control IN1 |
-| Pin 16 | Arduino 5V | Logic power |
-
-### Full First L293D Wiring Table
+The blue screw terminal block on each L298N contains:
 
 ```text
-L293D #1 pin 1  → Arduino D5
-L293D #1 pin 2  → Arduino D6
-L293D #1 pin 3  → Right motor wire 1
-L293D #1 pin 4  → GND
-L293D #1 pin 5  → GND
-L293D #1 pin 6  → Right motor wire 2
-L293D #1 pin 7  → Arduino D7
-L293D #1 pin 8  → VIN / external motor battery +
-
-L293D #1 pin 9  → Arduino D9
-L293D #1 pin 10 → Arduino D12
-L293D #1 pin 11 → Left motor wire 1
-L293D #1 pin 12 → GND
-L293D #1 pin 13 → GND
-L293D #1 pin 14 → Left motor wire 2
-L293D #1 pin 15 → Arduino D8
-L293D #1 pin 16 → Arduino 5V
+VMS → Motor power positive
+GND → Common ground
+5V  → Arduino 5V logic power
 ```
 
----
-
-## 4. Second L293D: Two Lifting Motors
-
-The second L293D controls two lifting motors for the forklift/lifting system.
-
-The lifting system uses two motors so that both sides of the lifting mechanism can move together. The lifting motors use separate PWM speed values for lifting up and lifting down so that upward torque and downward precision can be tuned independently.
-
-### Second L293D — Lifting Motors 1 and 2
-
-| Second L293D Pin | Arduino / Motor Connection | Purpose |
-|---:|---|---|
-| Pin 1 | Arduino D10 | Lift motor 1 enable / speed |
-| Pin 2 | Arduino D4 | Lift motor 1 IN1 |
-| Pin 3 | Lift motor 1 wire 1 | Lift motor 1 output |
-| Pin 4 | GND | Ground |
-| Pin 5 | GND | Ground |
-| Pin 6 | Lift motor 1 wire 2 | Lift motor 1 output |
-| Pin 7 | Arduino D13 | Lift motor 1 IN2 |
-| Pin 8 | VIN / external battery + | Motor power |
-| Pin 9 | Arduino D11 | Lift motor 2 enable / speed |
-| Pin 10 | Arduino A1 | Lift motor 2 IN2 |
-| Pin 11 | Lift motor 2 wire 1 | Lift motor 2 output |
-| Pin 12 | GND | Ground |
-| Pin 13 | GND | Ground |
-| Pin 14 | Lift motor 2 wire 2 | Lift motor 2 output |
-| Pin 15 | Arduino A0 | Lift motor 2 IN1 |
-| Pin 16 | Arduino 5V | Logic power |
-
-A0 and A1 are used as digital output pins in this code.
-
-### Lift Motor 1
-
-| Second L293D Pin | Arduino / Motor Connection | Purpose |
-|---:|---|---|
-| Pin 1 | Arduino D10 | Lift motor 1 enable / PWM speed |
-| Pin 2 | Arduino D4 | Lift motor 1 direction IN1 |
-| Pin 3 | Lift motor 1 wire 1 | Motor output |
-| Pin 4 | GND | Ground |
-| Pin 5 | GND | Ground |
-| Pin 6 | Lift motor 1 wire 2 | Motor output |
-| Pin 7 | Arduino D13 | Lift motor 1 direction IN2 |
-| Pin 8 | Arduino VIN / external motor battery + | Motor power |
-
-### Lift Motor 2
-
-| Second L293D Pin | Arduino / Motor Connection | Purpose |
-|---:|---|---|
-| Pin 9 | Arduino D11 | Lift motor 2 enable / PWM speed |
-| Pin 10 | Arduino A1 | Lift motor 2 direction IN2 |
-| Pin 11 | Lift motor 2 wire 1 | Motor output |
-| Pin 12 | GND | Ground |
-| Pin 13 | GND | Ground |
-| Pin 14 | Lift motor 2 wire 2 | Motor output |
-| Pin 15 | Arduino A0 | Lift motor 2 direction IN1 |
-| Pin 16 | Arduino 5V | Logic power |
-
-### Full Second L293D Wiring Table
+For both modules:
 
 ```text
-L293D #2 pin 1  → Arduino D10
-L293D #2 pin 2  → Arduino D4
-L293D #2 pin 3  → Lift motor 1 wire 1
-L293D #2 pin 4  → GND
-L293D #2 pin 5  → GND
-L293D #2 pin 6  → Lift motor 1 wire 2
-L293D #2 pin 7  → Arduino D13
-L293D #2 pin 8  → VIN / external motor battery +
+Existing motor power + → L298N #1 VMS
+Existing motor power + → L298N #2 VMS
 
-L293D #2 pin 9  → Arduino D11
-L293D #2 pin 10 → Arduino A1
-L293D #2 pin 11 → Lift motor 2 wire 1
-L293D #2 pin 12 → GND
-L293D #2 pin 13 → GND
-L293D #2 pin 14 → Lift motor 2 wire 2
-L293D #2 pin 15 → Arduino A0
-L293D #2 pin 16 → Arduino 5V
+Motor power - → Common GND
+Arduino GND   → Common GND
+HM-10 GND     → Common GND
+L298N #1 GND  → Common GND
+L298N #2 GND  → Common GND
+
+Arduino 5V → L298N #1 5V
+Arduino 5V → L298N #2 5V
 ```
 
----
+The screw-terminal `5V/GND` connections and pin-header `5V/GND` connections are electrically shared. This build uses the screw terminals, so the duplicate header pins do not need additional wires.
 
-## 5. Ground Connection
-
-All grounds must be connected together.
-
-Required common ground connections:
-
-```text
-Arduino GND
-HM-10 GND
-L293D #1 GND pins
-L293D #2 GND pins
-External battery negative
-```
-
-Recommended breadboard setup:
-
-```text
-Arduino GND → Breadboard negative rail
-
-HM-10 GND → Breadboard negative rail
-
-L293D #1 pins 4, 5, 12, 13 → Breadboard negative rail
-L293D #2 pins 4, 5, 12, 13 → Breadboard negative rail
-
-Battery negative → Breadboard negative rail
-```
-
-If all grounds are not connected together, the Arduino and motor drivers may not share the same reference voltage, and the motors may not respond correctly.
-
----
-
-## 6. Power Connection
-
-Each L293D requires two different power inputs.
-
-| L293D Pin | Connection | Purpose |
-|---:|---|---|
-| Pin 16 | Arduino 5V | Logic power |
-| Pin 8 | Arduino VIN or external motor battery positive | Motor power |
-
-Important:
-
-```text
-Pin 16 = logic power = 5V
-Pin 8  = motor power = VIN / external battery positive
-```
-
-Do not confuse these two pins.
-
-For both L293D ICs:
-
-```text
-Arduino 5V → L293D #1 pin 16
-Arduino 5V → L293D #2 pin 16
-
-VIN / external battery + → L293D #1 pin 8
-VIN / external battery + → L293D #2 pin 8
-```
-
-If the external battery is connected through the Arduino barrel jack, the motor power can be taken from Arduino VIN:
-
-```text
-External battery → Arduino barrel jack
-Arduino VIN → L293D #1 pin 8
-Arduino VIN → L293D #2 pin 8
-```
-
-Do not connect the external battery positive directly to Arduino 5V.
+Do not connect `VMS` to the Arduino `5V` pin. `VMS` is the motor power input; `5V` is the L298N logic supply.
 
 ---
 
 ## Arduino Pin Summary
 
-| Function | Arduino Pin |
-|---|---:|
-| HM-10 TXD to Arduino RX | D2 |
-| HM-10 RXD from Arduino TX | D3 |
+| Function | Arduino pin |
+|---|---|
+| HM-10 TXD → Arduino RX | D2 |
+| Arduino TX → HM-10 RXD | D3 |
 | Lift motor 1 IN1 | D4 |
-| Right motor enable / speed | D5 |
+| Right motor ENA/PWM | D5 |
 | Right motor IN1 | D6 |
 | Right motor IN2 | D7 |
-| Left motor IN1 | D8 |
-| Left motor enable / speed | D9 |
-| Lift motor 1 enable / speed | D10 |
-| Lift motor 2 enable / speed | D11 |
-| Left motor IN2 | D12 |
-| Lift motor 1 IN2 | D13 |
-| Lift motor 2 IN1 | A0 |
-| Lift motor 2 IN2 | A1 |
+| Left motor IN3 | D8 |
+| Left motor ENB/PWM | D9 |
+| Lift motor 1 ENA/PWM | D10 |
+| Lift motor 2 ENB/PWM | D11 |
+| Left motor IN4 | D12 |
+| Lift motor 2 IN3 | A0 |
+| Lift motor 2 IN4 | A1 |
+| Lift motor 1 IN2 | **A2** |
 
 ---
 
 ## BLE Command Mapping
 
-The mobile app sends single-character commands to the Arduino.
-
 | Command | Action |
 |---|---|
-| A | Move forward |
-| B | Turn right |
-| C | Move backward |
-| D | Turn left |
-| E | Lift up |
-| F | Lift down |
-| H | Select Gear 1 |
-| G | Select Gear 2 |
-| S | Stop all motors |
-| R | Test right wheel only |
-| L | Test left wheel only |
+| `A` | Move forward |
+| `B` | Turn right |
+| `C` | Move backward |
+| `D` | Turn left |
+| `E` | Lift up |
+| `F` | Lift down |
+| `H` | Select Gear 1 |
+| `G` | Select Gear 2 |
+| `S` | Stop all motors |
+| `R` | Test right wheel only |
+| `L` | Test left wheel only |
 
-The code also accepts lowercase versions of the same commands.
+Lowercase commands are converted to uppercase by the code.
 
----
+Suggested app mapping:
 
-## App Button Mapping
-
-The BLE controller app should be configured as follows:
-
-| App Button | Sent Character | Robot Action |
-|---|---|---|
-| Up | A | Move forward |
-| Right | B | Turn right |
-| Down | C | Move backward |
-| Left | D | Turn left |
-| Triangle | E | Lift up |
-| Circle | F | Lift down |
-| Gear 1 button | H | Select Gear 1 |
-| Gear 2 button | G | Select Gear 2 |
-| Stop button | S | Stop all motors |
-
-Optional testing buttons:
-
-| Test Button | Sent Character | Action |
-|---|---|---|
-| Right wheel test | R | Run right wheel only |
-| Left wheel test | L | Run left wheel only |
+| App button | Character |
+|---|---|
+| Up | `A` |
+| Right | `B` |
+| Down | `C` |
+| Left | `D` |
+| Lift up | `E` |
+| Lift down | `F` |
+| Gear 1 | `H` |
+| Gear 2 | `G` |
+| Stop | `S` |
 
 ---
 
 ## Current Speed Settings
 
-The current code uses separate speed settings for the right and left wheel motors. This allows the robot to compensate if one wheel reacts slower or faster than the other.
+PWM values use the Arduino range `0–255`.
 
-### Right Wheel Speed Settings
+### Right Wheel
 
 ```cpp
-const int RIGHT_GEAR1_MIN_SPEED = 70;
-const int RIGHT_GEAR1_MAX_SPEED = 70;
+const int RIGHT_GEAR1_MIN_SPEED = 90;
+const int RIGHT_GEAR1_MAX_SPEED = 90;
 
-const int RIGHT_GEAR2_MIN_SPEED = 90;
-const int RIGHT_GEAR2_MAX_SPEED = 110;
+const int RIGHT_GEAR2_MIN_SPEED = 100;
+const int RIGHT_GEAR2_MAX_SPEED = 120;
 
-const unsigned long RIGHT_RAMP_TIME = 2000; // ms
+const unsigned long RIGHT_RAMP_TIME = 2000;
 ```
 
-### Left Wheel Speed Settings
+### Left Wheel
 
 ```cpp
-const int LEFT_GEAR1_MIN_SPEED = 70;
-const int LEFT_GEAR1_MAX_SPEED = 70;
+const int LEFT_GEAR1_MIN_SPEED = 80;
+const int LEFT_GEAR1_MAX_SPEED = 80;
 
 const int LEFT_GEAR2_MIN_SPEED = 90;
 const int LEFT_GEAR2_MAX_SPEED = 110;
 
-const unsigned long LEFT_RAMP_TIME = 2000; // ms
+const unsigned long LEFT_RAMP_TIME = 2000;
 ```
 
-Gear 1 and Gear 2 are selected using Bluetooth commands:
+The right wheel currently receives a slightly higher PWM value to compensate for the weaker Motor A/ENA drive path.
 
-```text
-H → Select Gear 1
-G → Select Gear 2
-```
-
-When Gear 1 is selected, the code uses the Gear 1 speed values and the Gear 1 wheel timeout:
-
-```cpp
-currentRightMinWheelSpeed = RIGHT_GEAR1_MIN_SPEED;
-currentRightMaxWheelSpeed = RIGHT_GEAR1_MAX_SPEED;
-
-currentLeftMinWheelSpeed = LEFT_GEAR1_MIN_SPEED;
-currentLeftMaxWheelSpeed = LEFT_GEAR1_MAX_SPEED;
-
-currentWheelCommandTimeout = GEAR1_COMMAND_TIMEOUT;
-```
-
-When Gear 2 is selected, the code uses the Gear 2 speed values and the Gear 2 wheel timeout:
-
-```cpp
-currentRightMinWheelSpeed = RIGHT_GEAR2_MIN_SPEED;
-currentRightMaxWheelSpeed = RIGHT_GEAR2_MAX_SPEED;
-
-currentLeftMinWheelSpeed = LEFT_GEAR2_MIN_SPEED;
-currentLeftMaxWheelSpeed = LEFT_GEAR2_MAX_SPEED;
-
-currentWheelCommandTimeout = GEAR2_COMMAND_TIMEOUT;
-```
-
-The right and left wheel speeds are calculated separately:
-
-```cpp
-int currentRightSpeed = calculateRightRampSpeed();
-int currentLeftSpeed = calculateLeftRampSpeed();
-```
-
-The lifting motors use separate speed values for lifting up and lifting down:
+### Lifting Motors
 
 ```cpp
 const int LIFT_UP_SPEED = 50;
 const int LIFT_DOWN_SPEED = 130;
 ```
 
-The L293D Enable pins must be connected to PWM pins for speed control to work.
+Lift-up and lift-down speeds are separate because lifting requires different torque and control from lowering.
 
-Current PWM speed pins:
-
-```text
-Right motor speed  → Arduino D5
-Left motor speed   → Arduino D9
-Lift motor 1 speed → Arduino D10
-Lift motor 2 speed → Arduino D11
-```
-
-When a wheel command starts, each wheel calculates its own ramped speed. If a different wheel command is received, the ramp restarts for the new command.
-
-The Serial Monitor prints both right and left wheel speeds, for example:
-
-```text
-Forward speed R/L: 70 / 70
-Right turn speed R/L: 70 / 70
-Backward speed R/L: 70 / 70
-Left turn speed R/L: 70 / 70
-```
 ---
 
-## Auto Stop Behaviour
-
-The robot automatically stops the wheels or lifting motors if no matching command is received within the timeout period.
-
-The current code uses separate timeout settings for:
-
-```text
-Gear 1 wheel movement
-Gear 2 wheel movement
-Lifting movement
-```
-
-Current timeout settings:
+## Automatic Stop Settings
 
 ```cpp
-const unsigned long GEAR1_COMMAND_TIMEOUT = 200; // ms
+const unsigned long GEAR1_COMMAND_TIMEOUT = 150; // ms
 const unsigned long GEAR2_COMMAND_TIMEOUT = 330; // ms
-
-unsigned long currentWheelCommandTimeout = GEAR1_COMMAND_TIMEOUT;
-
-const unsigned long LIFT_COMMAND_TIMEOUT = 150; // ms
+const unsigned long LIFT_COMMAND_TIMEOUT = 80;   // ms
 ```
 
-The code tracks wheel and lifting commands separately using:
-
-```cpp
-unsigned long lastWheelCommandTime = 0;
-unsigned long lastLiftCommandTime = 0;
-
-bool wheelMoving = false;
-bool liftMoving = false;
-```
-
-Wheel auto-stop uses the currently selected gear timeout:
-
-```cpp
-if (wheelMoving && millis() - lastWheelCommandTime > currentWheelCommandTimeout) {
-  stopWheels();
-  wheelMoving = false;
-  currentWheelCommand = '\0';
-}
-```
-
-Lift auto-stop uses the lift timeout:
-
-```cpp
-if (liftMoving && millis() - lastLiftCommandTime > LIFT_COMMAND_TIMEOUT) {
-  stopLift();
-  liftMoving = false;
-}
-```
-
-This means Gear 1, Gear 2, and lifting can be tuned independently.
-
-Recommended tuning logic:
+The phone app must repeatedly send the active command while a button is held. If the Arduino does not receive another matching command before the relevant timeout, it stops that motor group.
 
 ```text
-Shorter timeout → stops faster after button release, better precision
-Longer timeout  → smoother movement while holding the button, less command drop-out
-```
-
-Recommended app settings:
-
-```text
-Long Press Delay: 0.10 seconds
-Repeat interval: 0.10 to 0.20 seconds
-Gear 1 timeout: around 200 ms
-Gear 2 timeout: around 330 ms
-Lift timeout: around 150 ms
+Shorter timeout → faster stop after button release
+Longer timeout  → smoother holding but slower stop
 ```
 
 ---
 
-## How to Upload
+## Upload Procedure
 
-1. Open Arduino IDE.
-2. Open `arduino/warehouse_robot_control/warehouse_robot_control.ino`.
-3. Select board: `Arduino UNO`.
-4. Select the correct port.
-5. Click Upload.
-6. Connect to the HM-10 module using the BLE controller app.
-7. Send commands from the app to test the robot.
+1. Open the `.ino` file in Arduino IDE.
+2. Select **Arduino UNO**.
+3. Select the correct serial port.
+4. Compile the sketch.
+5. Upload it to the Arduino.
+6. Open Serial Monitor at `9600` baud if debugging is required.
+7. Connect the phone to the HM-10 using the BLE controller app.
 
 ---
 
 ## Testing Procedure
 
-Recommended test order:
+Test with the robot lifted so the wheels and lift mechanism can move without load:
 
-1. Test HM-10 connection using BLE Terminal.
-2. Send a simple character such as `A` and check Serial Monitor.
-3. Test right wheel only using `R`.
-4. Test left wheel only using `L`.
-5. Test Gear 1 using `H`.
-6. Test Gear 1 forward, backward, left turn, and right turn.
-7. Test Gear 2 using `G`.
-8. Test Gear 2 forward, backward, left turn, and right turn.
-9. Test lift up using `E`.
-10. Test lift down using `F`.
-11. Test stop using `S`.
-12. Test Gear 1 wheel auto-stop.
-13. Test Gear 2 wheel auto-stop.
-14. Test lift auto-stop.
+1. Send `R` to test only the right wheel.
+2. Send `L` to test only the left wheel.
+3. Send `H`, then test `A`, `B`, `C`, and `D` in Gear 1.
+4. Send `G`, then test `A`, `B`, `C`, and `D` in Gear 2.
+5. Send `E` to test lift up.
+6. Send `F` to test lift down.
+7. Send `S` to stop all motors.
+8. Place the robot on the ground and check straight-line movement.
+9. Adjust right/left speed values in increments of approximately 5 if required.
 
 ---
 
 ## Troubleshooting
 
-### Motor spins at full speed regardless of speed value
+### One wheel is weaker than the other
 
-Check that the L293D Enable pin is connected to a PWM pin, not fixed to 5V.
+The current code compensates by using a higher PWM value for the right wheel.
+
+```cpp
+RIGHT_GEAR1_MIN_SPEED = 90;
+LEFT_GEAR1_MIN_SPEED  = 80;
+```
+
+If the weaker side changes when the two motor output connections are exchanged, the difference follows the L298N channel rather than the motor. Check that:
+
+- Both `ENA` and `ENB` jumpers are removed.
+- Both PWM wires are firmly connected.
+- Both motor screw terminals are tight.
+- Both channels share the same power and ground.
+
+### Lift motor 1 goes up but does not go down
+
+For lift motor 1:
 
 ```text
-Right motor:  L293D #1 pin 1 → Arduino D5
-Left motor:   L293D #1 pin 9 → Arduino D9
-Lift motor 1: L293D #2 pin 1 → Arduino D10
-Lift motor 2: L293D #2 pin 9 → Arduino D11
+Arduino D4 → L298N #2 IN1 / L1
+Arduino A2 → L298N #2 IN2 / L2
 ```
 
-### Motor accelerates too slowly or too quickly
+When lifting up, `L1` and `L3` should normally illuminate. When lifting down, `L2` and `L4` should normally illuminate.
 
-The right and left wheel motors now have separate ramp-time settings.
+If `L4` illuminates but `L2` does not:
 
-```cpp
-const unsigned long RIGHT_RAMP_TIME = 2000;
-const unsigned long LEFT_RAMP_TIME = 2000;
-```
+- Check the `A2 → IN2` jumper wire.
+- Confirm the uploaded code contains `const int LIFT1_IN2 = A2;`.
+- Check the L298N #2 IN2 connection.
 
-Reduce the value for faster acceleration. Increase the value for slower acceleration.
+### Motor direction is reversed
 
-Example: if the right wheel reacts more slowly than the left wheel, reduce the right ramp time.
+Turn the power off and exchange the two wires of only the affected motor at the `Motor A` or `Motor B` screw terminal.
 
-```cpp
-const unsigned long RIGHT_RAMP_TIME = 500;
-const unsigned long LEFT_RAMP_TIME = 2000;
-```
+Do not change the power or ground wires to reverse a motor.
 
-Example: if the right wheel is still slower even after ramp-time adjustment, increase the right wheel speed.
+### Motor runs at full speed
 
-```cpp
-const int RIGHT_GEAR1_MIN_SPEED = 85;
-const int RIGHT_GEAR1_MAX_SPEED = 85;
+Check that the corresponding `ENA` or `ENB` jumper has been removed and that the enable pin is connected to the correct Arduino PWM pin.
 
-const int LEFT_GEAR1_MIN_SPEED = 70;
-const int LEFT_GEAR1_MAX_SPEED = 70;
-```
-
-For Gear 2, adjust these values:
-
-```cpp
-const int RIGHT_GEAR2_MIN_SPEED = 215;
-const int RIGHT_GEAR2_MAX_SPEED = 215;
-
-const int LEFT_GEAR2_MIN_SPEED = 200;
-const int LEFT_GEAR2_MAX_SPEED = 200;
-```
-
-### Lift motors are too fast or too slow
-
-Adjust the lift-up and lift-down speeds separately:
-
-```cpp
-const int LIFT_UP_SPEED = 50;
-const int LIFT_DOWN_SPEED = 130;
-```
-
-Increase `LIFT_UP_SPEED` if the robot cannot lift the load. Reduce `LIFT_DOWN_SPEED` if the lift comes down too quickly or causes Bluetooth/power instability.
-
-### Motor does not move
-
-Check:
-
-```text
-L293D pin 8  → VIN / motor power
-L293D pin 16 → Arduino 5V
-L293D GND pins → Arduino GND
-Motor wires → correct L293D output pins
-Enable pin → correct Arduino PWM pin
-Direction pins → correct Arduino pins
-```
-
-### Bluetooth connects but commands do not control motors
+### Bluetooth connects but commands do not work
 
 Check:
 
 ```text
 HM-10 TXD → Arduino D2
-HM-10 RXD → Arduino D3
-Arduino Serial Monitor baud rate = 9600
-BLE app sends ASCII characters
+Arduino D3 → voltage divider → HM-10 RXD
+Baud rate  → 9600
+All grounds connected together
 ```
 
-### Robot stops too quickly while holding a button
+### Robot stops while holding a button
 
-Check whether the BLE app repeatedly sends the command while the button is held. If it does not, the Arduino will stop the motor after the relevant timeout.
-
-Possible fixes:
-
-```text
-Enable repeat-send or long-press repeat in the app
-Increase GEAR1_COMMAND_TIMEOUT if Gear 1 stops too quickly
-Increase GEAR2_COMMAND_TIMEOUT if Gear 2 stops too quickly
-Increase LIFT_COMMAND_TIMEOUT if the lift stops too quickly
-Check that the app sends plain ASCII characters such as A, B, C, D, E, F, G, H, S, R, L
-```
-
-### Robot moves backward when pressing forward
-
-Swap the motor output wires or reverse the HIGH/LOW logic in the motor control function.
-
-For example, swap:
-
-```text
-Right motor wire 1 ↔ Right motor wire 2
-```
-
-or edit the `setRightMotor()` / `setLeftMotor()` functions in the Arduino code.
-
-### Lift moves down when pressing lift up
-
-If `E` makes one of the lifting motors move in the wrong direction, swap that motor's two output wires.
-
-```text
-Lift motor 1 wrong direction → swap L293D #2 pin 3 and pin 6 motor wires
-Lift motor 2 wrong direction → swap L293D #2 pin 11 and pin 14 motor wires
-```
-
-Alternatively, reverse the direction logic in the `setLiftMotor1()` or `setLiftMotor2()` function.
+The BLE app must repeatedly send the command. Increase the relevant timeout slightly only if the app repeat interval is longer than the current timeout.
 
 ---
 
 ## Safety Notes
 
-- Do not power DC motors directly from Arduino output pins.
-- Use motor driver ICs such as L293D.
-- Use an external battery for motor power.
-- Connect all grounds together.
-- Check wiring before powering the circuit.
-- Disconnect power before changing wires.
-- Avoid short-circuiting the breadboard power rails.
-- If the L293D becomes very hot, disconnect power and check wiring.
-- Do not connect external battery positive directly to Arduino 5V.
-- Make sure the lifting mechanism cannot jam before running both lifting motors together.
+- Disconnect power before changing motor, signal, or screw-terminal wiring.
+- Never power a DC motor directly from an Arduino output pin.
+- Keep motor wiring clear of moving gears and lifting components.
+- Tighten all L298N screw terminals before testing.
+- Stop immediately if a driver, motor, battery, or wire becomes unusually hot.
+- Do not hold the lift against its mechanical end stop because stalled motors draw high current.
+- Confirm that the motor supply voltage is appropriate for the installed TT motors.
 
 ---
 
-## Current Status
+## Current Project Configuration
 
-- HM-10 Bluetooth connection tested.
-- BLE terminal communication confirmed.
-- Single motor control through L293D tested.
-- First L293D assigned to right and left wheel motors.
-- Second L293D assigned to two lifting motors.
-- Gear 1 and Gear 2 speed ranges added for wheel motors.
-- Ramped wheel acceleration added.
-- Separate Gear 1 and Gear 2 wheel timeout settings added.
-- Separate lift timeout setting added.
-- Separate lift-up and lift-down speed settings added.
-- PWM speed control tested and tuned during physical testing.
-- Final wiring and movement/lifting tests completed with the current code version.
+- HM-10 BLE communication through Arduino D2/D3.
+- Two L298N modules replacing the previous two L293D ICs.
+- L298N #1 assigned to the right and left wheel motors.
+- L298N #2 assigned to two lifting motors.
+- Lift motor 1 `IN2` moved from D13 to A2.
+- Independent right/left wheel speed calibration enabled.
+- Right wheel PWM increased to compensate for the weaker drive path.
+- Separate Gear 1 and Gear 2 speed and timeout settings.
+- Separate lift-up, lift-down, and lift timeout settings.
+- Automatic wheel and lift stopping enabled.
